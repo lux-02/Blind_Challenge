@@ -264,7 +264,9 @@ export async function POST(req: Request) {
     | {
         blogId?: unknown;
         extractedPieces?: unknown;
+        extractedPieceIndexes?: unknown;
         imageFindings?: unknown;
+        imageFindingIndexes?: unknown;
         riskNodes?: unknown;
         scenarios?: unknown;
       }
@@ -277,9 +279,32 @@ export async function POST(req: Request) {
   const extractedPieces = Array.isArray(body?.extractedPieces)
     ? ((body!.extractedPieces as BlindReport["extractedPieces"]).slice(0, 40) as BlindReport["extractedPieces"])
     : [];
+  const extractedPieceIndexesRaw = Array.isArray(body?.extractedPieceIndexes)
+    ? (body!.extractedPieceIndexes as unknown[])
+    : null;
+  const extractedPieceIndexes =
+    extractedPieceIndexesRaw && extractedPieceIndexesRaw.length >= extractedPieces.length
+      ? extractedPieceIndexesRaw
+          .slice(0, extractedPieces.length)
+          .map((x, i) =>
+            typeof x === "number" && Number.isFinite(x) ? Math.max(0, Math.floor(x)) : i,
+          )
+      : extractedPieces.map((_, i) => i);
+
   const imageFindings = Array.isArray(body?.imageFindings)
     ? ((body!.imageFindings as ImageFinding[]).slice(0, 40) as ImageFinding[])
     : [];
+  const imageFindingIndexesRaw = Array.isArray(body?.imageFindingIndexes)
+    ? (body!.imageFindingIndexes as unknown[])
+    : null;
+  const imageFindingIndexes =
+    imageFindingIndexesRaw && imageFindingIndexesRaw.length >= imageFindings.length
+      ? imageFindingIndexesRaw
+          .slice(0, imageFindings.length)
+          .map((x, i) =>
+            typeof x === "number" && Number.isFinite(x) ? Math.max(0, Math.floor(x)) : i,
+          )
+      : imageFindings.map((_, i) => i);
   const riskNodes = Array.isArray(body?.riskNodes)
     ? ((body!.riskNodes as RiskNode[]).slice(0, 20) as RiskNode[])
     : [];
@@ -332,6 +357,23 @@ export async function POST(req: Request) {
     riskIds,
     scenarioIds,
   });
+
+  // If the caller provided index maps (subset -> original), translate indices back to the original report arrays.
+  const mappedEdges: AttackGraphEdge[] = edges
+    .map((e) => {
+      if (e.source.kind === "piece") {
+        const mapped = extractedPieceIndexes[e.source.index];
+        if (typeof mapped !== "number") return null;
+        return { ...e, source: { kind: "piece", index: mapped } };
+      }
+      if (e.source.kind === "image") {
+        const mapped = imageFindingIndexes[e.source.index];
+        if (typeof mapped !== "number") return null;
+        return { ...e, source: { kind: "image", index: mapped } };
+      }
+      return e;
+    })
+    .filter(Boolean) as AttackGraphEdge[];
   const warnings = Array.isArray(extracted.warnings)
     ? (extracted.warnings.filter((x) => typeof x === "string") as string[])
     : undefined;
@@ -339,7 +381,7 @@ export async function POST(req: Request) {
   const out: AttackGraph = {
     generatedAt: nowISO(),
     model,
-    edges,
+    edges: mappedEdges,
     warnings: warnings?.slice(0, 10),
   };
 

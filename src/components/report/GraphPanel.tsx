@@ -20,6 +20,8 @@ type Filters = {
   highOnly: boolean;
 };
 
+type ViewMode = "summary" | "full";
+
 const AttackPathGraph = dynamic(() => import("@/components/report/AttackPathGraph"), {
   ssr: false,
   loading: () => (
@@ -44,6 +46,7 @@ export default function GraphPanel(props: {
     showScenarios: true,
     highOnly: false,
   });
+  const [viewMode, setViewMode] = useState<ViewMode>("summary");
 
   const edgesCount = report.attackGraph?.edges?.length ?? 0;
   const llmActive = Boolean(edgesCount);
@@ -103,6 +106,14 @@ export default function GraphPanel(props: {
               ))}
               <Button
                 size="sm"
+                variant={viewMode === "summary" ? "secondary" : "ghost"}
+                onClick={() => setViewMode((p) => (p === "summary" ? "full" : "summary"))}
+                title="요약 그래프는 반복 단서/저강도 연결을 줄여 더 논리적으로 보이도록 합니다."
+              >
+                {viewMode === "summary" ? "요약" : "전체"}
+              </Button>
+              <Button
+                size="sm"
                 variant={filters.highOnly ? "secondary" : "ghost"}
                 onClick={() => setFilters((p) => ({ ...p, highOnly: !p.highOnly }))}
                 title="high severity 중심으로 간단히 봅니다."
@@ -118,6 +129,7 @@ export default function GraphPanel(props: {
               onSelectPiece={onSelectPiece}
               onSelectImageFinding={onSelectImageFinding}
               filters={filters}
+              viewMode={viewMode}
               onInspectChange={setInspect}
             />
           </div>
@@ -179,4 +191,3 @@ export default function GraphPanel(props: {
     </div>
   );
 }
-

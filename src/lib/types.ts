@@ -19,6 +19,8 @@ export type ScrapedContent = {
   publishedAt?: string; // best-effort
   text: string; // extracted text (bounded)
   images: string[]; // image URLs (bounded)
+  categoryNo?: number;
+  categoryName?: string;
 };
 
 export type ImageFinding = {
@@ -106,6 +108,27 @@ export type AttackGraph = {
   warnings?: string[];
 };
 
+export type PostInsight = {
+  logNo: string;
+  summary: string; // 3~5 sentences
+  riskSignals: string[]; // short labels
+  evidence: Array<{
+    kind: "text" | "image";
+    excerpt: string;
+    why: string;
+    severity: "low" | "medium" | "high";
+    confidence?: number;
+  }>;
+  defensiveActions: string[];
+};
+
+export type PostInsights = {
+  generatedAt: string;
+  model: string;
+  posts: PostInsight[];
+  warnings?: string[];
+};
+
 export type BlindReport = {
   blogId: string;
   extractedPieces: ExtractedPiece[];
@@ -123,6 +146,7 @@ export type BlindReport = {
     categoryNo: number;
     categoryName: string;
   };
+  categories?: Array<{ categoryNo: number; categoryName: string }>;
   source?: {
     scrapedAt: string;
     postCount: number;
@@ -133,4 +157,5 @@ export type BlindReport = {
     model?: string;
     generatedAt?: string;
   };
+  postInsights?: PostInsights;
 };

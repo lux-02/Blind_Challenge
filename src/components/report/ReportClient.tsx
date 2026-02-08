@@ -16,6 +16,7 @@ import GraphPanel from "@/components/report/GraphPanel";
 import { useVisionProgressive } from "@/components/report/useVisionProgressive";
 import { useAttackGraphLLM } from "@/components/report/useAttackGraphLLM";
 import { usePhishingSimulation } from "@/components/report/usePhishingSimulation";
+import { usePostInsightsLLM } from "@/components/report/usePostInsightsLLM";
 import type { BlindReport } from "@/lib/types";
 import { buildMockReport } from "@/lib/mockReport";
 import { buildPostRecommendations } from "@/lib/recommendations";
@@ -158,6 +159,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
   const [activePostLogNo, setActivePostLogNo] = useState<string | null>(null);
   const [pendingFocusLogNo, setPendingFocusLogNo] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
+  const [fullContentByLogNo, setFullContentByLogNo] = useState<Record<string, boolean>>({});
 
   const [pieceTypeFilter, setPieceTypeFilter] = useState<
     "all" | BlindReport["extractedPieces"][number]["type"]
@@ -169,6 +171,13 @@ export default function ReportClient({ blogId }: { blogId: string }) {
   const vision = useVisionProgressive({ report, setReport, disabled: demo });
   const graphLLM = useAttackGraphLLM({ report, setReport, disabled: demo });
   const phishing = usePhishingSimulation({ report, setReport, disabled: demo });
+  const postInsightsLLM = usePostInsightsLLM({ report, setReport, disabled: demo });
+
+  const postInsightByLogNo = useMemo(() => {
+    const m = new Map<string, NonNullable<BlindReport["postInsights"]>["posts"][number]>();
+    for (const p of report?.postInsights?.posts ?? []) m.set(p.logNo, p);
+    return m;
+  }, [report?.postInsights?.posts]);
 
   useEffect(() => {
     return () => {
@@ -376,12 +385,19 @@ export default function ReportClient({ blogId }: { blogId: string }) {
   const filteredContents = useMemo(() => {
     const list = report?.contents ?? [];
     const q = postQuery.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((c) => {
+    const base = list.filter((c) => {
       const t = `${c.title}\n${c.text}`.toLowerCase();
-      return t.includes(q);
+      return !q || t.includes(q);
     });
-  }, [postQuery, report?.contents]);
+    if (!pieceEvidenceOnly) return base;
+    // Evidence-only mode: show only posts that actually have evidence/signals.
+    return base.filter((c) => {
+      const v = scoringByLogNo.get(c.logNo);
+      const pieceCount = v?.pieceCount ?? 0;
+      const imageCount = v?.imageCount ?? 0;
+      return pieceCount + imageCount > 0;
+    });
+  }, [pieceEvidenceOnly, postQuery, report?.contents, scoringByLogNo]);
 
   const actionChecklistText = useMemo(() => {
     const lines = [
@@ -514,6 +530,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
         blogId={blogId}
         demo={demo}
         category={report?.category ?? null}
+        categories={report?.categories ?? null}
         riskScore={typeof report?.riskScore === "number" ? report.riskScore : null}
         generatedAt={report?.generatedAt ?? null}
       />
@@ -885,6 +902,32 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                   <p className="mt-1 text-sm text-zinc-300">
                     탐지된 단서와 해당 포스트(텍스트/이미지)를 한 곳에서 확인할 수 있어요.
                   </p>
+                  {!demo ? (
+                    <div className="mt-2 text-xs text-zinc-400">
+                      포스트 통합 분석:{" "}
+                      <span className="font-mono text-zinc-200">
+                        {postInsightsLLM.state.kind === "rate_limited"
+                          ? `rate limited (${Math.ceil(postInsightsLLM.state.retryAfterMs / 1000)}s)`
+                          : postInsightsLLM.state.kind}
+                      </span>
+                      {report.postInsights?.model ? (
+                        <>
+                          {" / "}model:{" "}
+                          <span className="font-mono text-zinc-200">
+                            {report.postInsights.model}
+                          </span>
+                        </>
+                      ) : null}
+                      {postInsightsLLM.state.kind === "error" ? (
+                        <>
+                          {" "}
+                          <Button size="sm" variant="ghost" onClick={postInsightsLLM.retry}>
+                            재시도
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="text-xs text-zinc-400">
                   포스트 {filteredContents.length}개 / 단서 {filteredPieces.length}개
@@ -1050,19 +1093,41 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                     </div>
                                   ) : null}
                                 </div>
-                                {!demo ? (
-                                  <a
-                                    className="bc-focus shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
-                                    href={c.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    원문 열기
-                                  </a>
-                                ) : (
-                                  <Tag tone="warn">demo</Tag>
-                                )}
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {pieceEvidenceOnly ? (
+                                    <button
+                                      type="button"
+                                      className="bc-focus rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setFullContentByLogNo((prev) => ({
+                                          ...prev,
+                                          [c.logNo]: !prev[c.logNo],
+                                        }));
+                                      }}
+                                      title="에비던스만 보기/전체 본문 보기 전환"
+                                    >
+                                      {fullContentByLogNo[c.logNo]
+                                        ? "에비던스만"
+                                        : "전체 텍스트 보기"}
+                                    </button>
+                                  ) : null}
+
+                                  {!demo ? (
+                                    <a
+                                      className="bc-focus rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                                      href={c.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      원문 열기
+                                    </a>
+                                  ) : (
+                                    <Tag tone="warn">demo</Tag>
+                                  )}
+                                </div>
                               </div>
                               <div className="mt-2 text-xs text-zinc-500">
                                 <span className="group-open:hidden">열기</span>
@@ -1090,6 +1155,66 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                   </ul>
                                 </div>
                               ) : null}
+
+                              {(() => {
+                                const insight = postInsightByLogNo.get(c.logNo) ?? null;
+                                if (insight) {
+                                  return (
+                                    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-xs font-semibold text-white">
+                                          AI 통합 분석(텍스트+이미지)
+                                        </div>
+                                        <div className="text-xs text-zinc-400">logNo: {c.logNo}</div>
+                                      </div>
+                                      {insight.riskSignals?.length ? (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {insight.riskSignals.slice(0, 6).map((s) => (
+                                            <Tag key={s} tone="warn">
+                                              {s}
+                                            </Tag>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+                                        {insight.summary}
+                                      </div>
+                                      {insight.defensiveActions?.length ? (
+                                        <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3">
+                                          <div className="text-xs font-semibold text-white">
+                                            권장 조치(요약)
+                                          </div>
+                                          <ul className="mt-2 space-y-1 text-sm text-zinc-200">
+                                            {insight.defensiveActions.slice(0, 5).map((a) => (
+                                              <li key={a} className="leading-6">
+                                                • {a}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                }
+
+                                if (demo) return null;
+                                if (postInsightsLLM.state.kind === "running") {
+                                  return (
+                                    <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-zinc-300">
+                                      AI 통합 분석 생성 중…
+                                    </div>
+                                  );
+                                }
+                                if (postInsightsLLM.state.kind === "error") {
+                                  return (
+                                    <div className="rounded-lg border border-white/20 bg-white/5 p-3 text-sm text-white/90">
+                                      AI 통합 분석 생성 오류:{" "}
+                                      <span className="font-mono">{postInsightsLLM.state.message}</span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
 
                               {activeEvidence?.logNo === c.logNo ? (
                                 <div className="rounded-lg border border-white/20 bg-white/5 p-3">
@@ -1163,6 +1288,28 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                       </div>
                                     ) : null}
                                   </div>
+                                  {activeImageFinding.imageUrl ? (
+                                    <div className="mt-3">
+                                      <div className="text-xs text-zinc-400">해당 이미지</div>
+                                      <a
+                                        className="bc-focus mt-2 block overflow-hidden rounded-lg border border-white/10 bg-black/20 hover:border-white/20"
+                                        href={activeImageFinding.imageUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title="클릭하면 원본 이미지를 새 탭에서 엽니다."
+                                      >
+                                        <div className="relative h-36 w-full">
+                                          <Image
+                                            src={activeImageFinding.imageUrl}
+                                            alt="이미지 단서 미리보기"
+                                            fill
+                                            sizes="(max-width: 640px) 92vw, 640px"
+                                            className="object-cover"
+                                          />
+                                        </div>
+                                      </a>
+                                    </div>
+                                  ) : null}
                                   <div className="mt-3">
                                     <div className="text-xs text-zinc-400">요약</div>
                                     <div className="mt-1 rounded-md border border-white/10 bg-black/20 p-2 font-mono text-xs leading-5 text-zinc-100">
@@ -1196,25 +1343,51 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                           onClick={() => onImageFindingClick(f)}
                                           className="bc-focus w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-left transition hover:border-white/20"
                                         >
-                                          <div className="flex items-center justify-between gap-3">
-                                            <div className="text-xs font-semibold text-white">
-                                              {f.label}
-                                            </div>
-                                            <span
+                                          <div className="flex items-start gap-3">
+                                            <a
                                               className={[
-                                                "rounded-full border px-2 py-0.5 font-mono text-[10px]",
-                                                f.severity === "high"
-                                                  ? "border-white/50 bg-[rgba(255,255,255,0.08)] text-white"
-                                                  : f.severity === "medium"
-                                                    ? "border-white/40 bg-[rgba(255,255,255,0.06)] text-white/90"
-                                                    : "border-white/28 bg-[rgba(255,255,255,0.04)] text-white/85",
+                                                "bc-focus relative mt-0.5 h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-black/20",
+                                                activeImageFinding?.imageUrl === f.imageUrl
+                                                  ? "border-white/35 ring-2 ring-[rgba(255,255,255,0.12)]"
+                                                  : "border-white/10",
                                               ].join(" ")}
+                                              href={f.imageUrl}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              onClick={(e) => e.stopPropagation()}
+                                              title="클릭하면 원본 이미지를 새 탭에서 엽니다."
                                             >
-                                              {f.severity}
-                                            </span>
-                                          </div>
-                                          <div className="mt-1 text-sm text-zinc-200">
-                                            {f.excerpt}
+                                              <Image
+                                                src={f.imageUrl}
+                                                alt="이미지 단서 썸네일"
+                                                fill
+                                                sizes="56px"
+                                                className="object-cover"
+                                              />
+                                            </a>
+
+                                            <div className="min-w-0 flex-1">
+                                              <div className="flex items-center justify-between gap-3">
+                                                <div className="truncate text-xs font-semibold text-white">
+                                                  {f.label}
+                                                </div>
+                                                <span
+                                                  className={[
+                                                    "rounded-full border px-2 py-0.5 font-mono text-[10px]",
+                                                    f.severity === "high"
+                                                      ? "border-white/50 bg-[rgba(255,255,255,0.08)] text-white"
+                                                      : f.severity === "medium"
+                                                        ? "border-white/40 bg-[rgba(255,255,255,0.06)] text-white/90"
+                                                        : "border-white/28 bg-[rgba(255,255,255,0.04)] text-white/85",
+                                                  ].join(" ")}
+                                                >
+                                                  {f.severity}
+                                                </span>
+                                              </div>
+                                              <div className="mt-1 line-clamp-2 text-sm text-zinc-200">
+                                                {f.excerpt}
+                                              </div>
+                                            </div>
                                           </div>
                                         </button>
                                       ))}
@@ -1269,49 +1442,97 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                 </div>
                               ) : null}
 
-                              <div>
-                                <div className="text-xs text-zinc-400">추출 텍스트</div>
-                                <div className="mt-2 whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/30 p-3 font-mono text-xs leading-5 text-zinc-200">
-                                  {c.text || "(텍스트 없음)"}
-                                </div>
-                              </div>
-
-                              {c.images?.length ? (
-                                <div>
-                                  <div className="text-xs text-zinc-400">이미지 미리보기</div>
-                                  <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
-                                    {c.images.slice(0, 12).map((u) => (
-                                      <a
-                                        key={u}
-                                        href={u}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className={[
-                                          "bc-focus group relative overflow-hidden rounded-lg border bg-black/20",
-                                          activeImageFinding?.imageUrl === u
-                                            ? "border-white/35 ring-2 ring-[rgba(255,255,255,0.14)]"
-                                            : "border-white/10",
-                                        ].join(" ")}
-                                        title="클릭하면 원본을 새 탭에서 엽니다."
-                                      >
-                                        <div className="relative h-20 w-full">
-                                          <Image
-                                            src={u}
-                                            alt="추출 이미지"
-                                            fill
-                                            sizes="(max-width: 640px) 25vw, 12vw"
-                                            className="object-cover transition group-hover:scale-[1.02]"
-                                          />
-                                        </div>
-                                      </a>
-                                    ))}
+                              {pieceEvidenceOnly && !fullContentByLogNo[c.logNo] ? (
+                                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                  <div className="text-xs font-semibold text-white">
+                                    에비던스만 보기
                                   </div>
-                                  {c.images.length > 12 ? (
-                                    <div className="mt-2 text-xs text-zinc-500">
-                                      + {c.images.length - 12}개 더 있음
-                                    </div>
-                                  ) : null}
+                                  <div className="mt-1 text-xs text-zinc-400">
+                                    본문 텍스트/원본 이미지 목록은 숨기고, 근거 단서(발췌/이미지 단서)만 표시합니다.
+                                  </div>
                                 </div>
+                              ) : null}
+
+                              {pieceEvidenceOnly ? (
+                                (piecesByLogNo.get(c.logNo) ?? []).some((p) => p.evidence?.excerpt) ? (
+                                  <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="text-xs font-semibold text-white">
+                                        텍스트 에비던스(발췌)
+                                      </div>
+                                      <div className="text-xs text-zinc-400">
+                                        {(piecesByLogNo.get(c.logNo) ?? []).filter((p) => Boolean(p.evidence?.excerpt)).length}개
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 space-y-2">
+                                      {(piecesByLogNo.get(c.logNo) ?? [])
+                                        .filter((p) => Boolean(p.evidence?.excerpt))
+                                        .slice(0, 6)
+                                        .map((p, idx) => (
+                                          <div
+                                            key={`${c.logNo}-ev-${idx}`}
+                                            className="rounded-md border border-white/10 bg-black/30 p-2 font-mono text-xs leading-5 text-zinc-200"
+                                          >
+                                            {p.evidence!.excerpt}
+                                          </div>
+                                        ))}
+                                      {(piecesByLogNo.get(c.logNo) ?? []).filter((p) => Boolean(p.evidence?.excerpt)).length > 6 ? (
+                                        <div className="text-xs text-zinc-500">
+                                          + {(piecesByLogNo.get(c.logNo) ?? []).filter((p) => Boolean(p.evidence?.excerpt)).length - 6}개 더 있음
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null
+                              ) : null}
+
+                              {!pieceEvidenceOnly || fullContentByLogNo[c.logNo] ? (
+                                <div>
+                                  <div className="text-xs text-zinc-400">추출 텍스트</div>
+                                  <div className="mt-2 whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/30 p-3 font-mono text-xs leading-5 text-zinc-200">
+                                    {c.text || "(텍스트 없음)"}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {!pieceEvidenceOnly || fullContentByLogNo[c.logNo] ? (
+                                c.images?.length ? (
+                                  <div>
+                                    <div className="text-xs text-zinc-400">이미지 미리보기</div>
+                                    <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
+                                      {c.images.slice(0, 12).map((u) => (
+                                        <a
+                                          key={u}
+                                          href={u}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className={[
+                                            "bc-focus group relative overflow-hidden rounded-lg border bg-black/20",
+                                            activeImageFinding?.imageUrl === u
+                                              ? "border-white/35 ring-2 ring-[rgba(255,255,255,0.14)]"
+                                              : "border-white/10",
+                                          ].join(" ")}
+                                          title="클릭하면 원본을 새 탭에서 엽니다."
+                                        >
+                                          <div className="relative h-20 w-full">
+                                            <Image
+                                              src={u}
+                                              alt="추출 이미지"
+                                              fill
+                                              sizes="(max-width: 640px) 25vw, 12vw"
+                                              className="object-cover transition group-hover:scale-[1.02]"
+                                            />
+                                          </div>
+                                        </a>
+                                      ))}
+                                    </div>
+                                    {c.images.length > 12 ? (
+                                      <div className="mt-2 text-xs text-zinc-500">
+                                        + {c.images.length - 12}개 더 있음
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                ) : null
                               ) : null}
                             </div>
                           </details>
