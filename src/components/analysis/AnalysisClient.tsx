@@ -8,13 +8,18 @@ import { useVisionProgressive } from "@/components/report/useVisionProgressive";
 import { notifyStorageChanged } from "@/lib/storageBus";
 import Button from "@/components/ui/Button";
 import Tag from "@/components/ui/Tag";
+import Modal from "@/components/ui/Modal";
 
 const STORAGE_KEY = "blindchallenge:latestReport";
 
-type CategoryCandidate = {
+type ReconCategory = {
   categoryNo: number;
   categoryName: string;
   postCnt: number;
+  openYN: boolean;
+  risk: "high" | "normal";
+  riskReason?: string;
+  isChallenge: boolean;
 };
 
 function AnalysisStepper(props: { phase: string }) {
@@ -78,13 +83,10 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
     | "error"
   >("idle");
   const [error, setError] = useState<string | null>(null);
-  const [candidates, setCandidates] = useState<CategoryCandidate[]>([]);
-  const [selectedCategoryNo, setSelectedCategoryNo] = useState<number | null>(
-    null,
-  );
-  const [recommendedCategoryNo, setRecommendedCategoryNo] = useState<number | null>(
-    null,
-  );
+  const [categories, setCategories] = useState<ReconCategory[]>([]);
+  const [highRiskCount, setHighRiskCount] = useState<number>(0);
+  const [reconWarnings, setReconWarnings] = useState<string[]>([]);
+  const [selectedCategoryNos, setSelectedCategoryNos] = useState<number[]>([]);
   const [report, setReport] = useState<BlindReport | null>(null);
 
   const vision = useVisionProgressive({ report, setReport });
@@ -92,7 +94,7 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
   const status = useMemo(() => {
     switch (phase) {
       case "probing_categories":
-        return "블챌 카테고리 탐지 중…";
+        return "카테고리 정찰 중…";
       case "choose_category":
         return "분석할 카테고리를 선택해 주세요.";
       case "calling_api":
@@ -119,14 +121,14 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
   }, [phase, vision.progress.processed, vision.progress.total]);
 
   const runAnalyze = useCallback(
-    async (categoryNo?: number | null) => {
+    async (categoryNos?: number[] | null) => {
     setPhase("calling_api");
     const res = await fetch("/api/analyze", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         blogId,
-        categoryNo: categoryNo ?? undefined,
+        categoryNos: Array.isArray(categoryNos) && categoryNos.length ? categoryNos : undefined,
       }),
     });
 
@@ -193,7 +195,7 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
     async function run() {
       try {
         setPhase("probing_categories");
-        const res = await fetch("/api/naver/categories", {
+        const res = await fetch("/api/naver/recon", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ blogId }),
@@ -203,25 +205,22 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
 
         if (res.ok) {
           const json = (await res.json()) as {
-            candidates?: CategoryCandidate[];
-            recommendedCategoryNo?: number | null;
+            categories?: ReconCategory[];
+            highRiskCount?: number;
+            defaultSelectedCategoryNos?: number[];
+            warnings?: string[];
           };
-          const list = Array.isArray(json.candidates) ? json.candidates : [];
-          setCandidates(list);
+          const list = Array.isArray(json.categories) ? json.categories : [];
+          setCategories(list);
+          setHighRiskCount(typeof json.highRiskCount === "number" ? json.highRiskCount : 0);
+          setReconWarnings(Array.isArray(json.warnings) ? (json.warnings.filter((w) => typeof w === "string") as string[]) : []);
 
-          const rec =
-            typeof json.recommendedCategoryNo === "number"
-              ? json.recommendedCategoryNo
-              : null;
-          setRecommendedCategoryNo(rec);
-          const defaultSel = rec ?? (list[0]?.categoryNo ?? null);
-          setSelectedCategoryNo(defaultSel);
+          const defaults = Array.isArray(json.defaultSelectedCategoryNos)
+            ? (json.defaultSelectedCategoryNos.filter((n) => typeof n === "number") as number[])
+            : [];
+          setSelectedCategoryNos(defaults.length ? defaults : list.slice(0, 1).map((c) => c.categoryNo));
 
-          if (list.length <= 1) {
-            await runAnalyze(defaultSel);
-            return;
-          }
-
+          // Always let user confirm via modal (requested UX).
           setPhase("choose_category");
           return;
         }
@@ -292,82 +291,146 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
 
       <main className="mt-10 flex flex-1 items-center justify-center">
         {phase === "choose_category" ? (
-          <div className="w-full max-w-2xl">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
-              <div className="text-xs text-zinc-400">카테고리 탐지 결과</div>
-              <h1 className="mt-2 text-lg font-semibold text-white">
-                분석할 챌린지 카테고리를 선택해 주세요
-              </h1>
-              <p className="mt-2 text-sm text-zinc-300">
-                블로그마다 블챌/주간일기 카테고리명이 다를 수 있어요.
-              </p>
-
-              <div className="mt-5 space-y-2">
-                {(() => {
-                  const max = Math.max(
-                    1,
-                    ...candidates.map((c) => (typeof c.postCnt === "number" ? c.postCnt : 0)),
-                  );
-                  return candidates.map((c) => (
-                    <label
-                      key={c.categoryNo}
-                      className={[
-                        "flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3",
-                        selectedCategoryNo === c.categoryNo
-                          ? "border-white/45 bg-[rgba(255,255,255,0.06)]"
-                          : "border-white/10 bg-black/20 hover:border-white/20",
-                      ].join(" ")}
-                    >
-                      <input
-                        type="radio"
-                        name="category"
-                        className="mt-1"
-                        checked={selectedCategoryNo === c.categoryNo}
-                        onChange={() => setSelectedCategoryNo(c.categoryNo)}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="truncate text-sm font-semibold text-white">
-                            {c.categoryName}
-                          </div>
-                          {recommendedCategoryNo === c.categoryNo ? (
-                            <Tag tone="ok">추천</Tag>
-                          ) : null}
-                        </div>
-                        <div className="mt-1 text-xs text-zinc-400">
-                          categoryNo:{" "}
-                          <span className="font-mono text-zinc-200">
-                            {c.categoryNo}
-                          </span>
-                          {" / "}
-                          게시물:{" "}
-                          <span className="font-mono text-zinc-200">
-                            {c.postCnt}
-                          </span>
-                        </div>
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full bg-[linear-gradient(90deg,rgba(255,255,255,0.28),rgba(255,255,255,0.92))]"
-                            style={{
-                              width: `${Math.max(
-                                3,
-                                Math.round(((c.postCnt ?? 0) / max) * 100),
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </label>
-                  ));
-                })()}
+          <div className="w-full max-w-xl">
+            <CyberLoader status={"카테고리 목록을 준비 중…"} />
+            <Modal
+              open={true}
+              title="분석할 카테고리 확인"
+              onClose={() => {
+                // Keep flow consistent: allow user to back out to home.
+                router.push("/");
+              }}
+            >
+              <div className="text-sm text-zinc-200">
+                해커가 주목할 만한 카테고리{" "}
+                <span className="font-mono text-white">{highRiskCount}</span>개를
+                발견했습니다. 이 카테고리들을 분석할까요?
+              </div>
+              <div className="mt-2 text-xs text-zinc-400">
+                체크박스로 분석 범위를 최종 선택할 수 있어요. (블챌 카테고리는 High
+                Risk로 상단에 고정됩니다)
               </div>
 
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              {reconWarnings.length ? (
+                <div className="mt-4 rounded-xl border border-white/15 bg-black/30 p-3 text-xs text-zinc-200">
+                  <div className="font-semibold text-white">알림</div>
+                  <ul className="mt-2 space-y-1">
+                    {reconWarnings.slice(0, 4).map((w) => (
+                      <li key={w}>• {w}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const only = categories
+                      .filter((c) => c.risk === "high" || c.isChallenge)
+                      .map((c) => c.categoryNo);
+                    setSelectedCategoryNos(Array.from(new Set(only)));
+                  }}
+                >
+                  위험만 선택
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedCategoryNos([])}
+                >
+                  전체 해제
+                </Button>
+                <div className="ml-auto text-xs text-zinc-400">
+                  선택{" "}
+                  <span className="font-mono text-zinc-100">
+                    {selectedCategoryNos.length}
+                  </span>
+                  개
+                </div>
+              </div>
+
+              <div className="mt-4 max-h-[52vh] overflow-auto rounded-xl border border-white/10 bg-black/20">
+                <ul className="divide-y divide-white/10">
+                  {categories.map((c) => {
+                    const checked = selectedCategoryNos.includes(c.categoryNo);
+                    const disabled = c.openYN === false;
+                    return (
+                      <li
+                        key={c.categoryNo}
+                        className={[
+                          "flex items-start gap-3 px-4 py-3",
+                          disabled ? "opacity-60" : "hover:bg-white/5",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 accent-[rgba(255,255,255,0.78)]"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setSelectedCategoryNos((prev) => {
+                              const next = new Set(prev);
+                              if (on) next.add(c.categoryNo);
+                              else next.delete(c.categoryNo);
+                              return Array.from(next);
+                            });
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="truncate text-sm font-semibold text-white">
+                                  {c.categoryName}
+                                </div>
+                                {c.isChallenge ? <Tag tone="accent">BLCH</Tag> : null}
+                                {c.risk === "high" ? <Tag tone="danger">High Risk</Tag> : null}
+                                {disabled ? (
+                                  <Tag tone="warn">접근 제한</Tag>
+                                ) : null}
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-400">
+                                <span className="font-mono text-zinc-200">#{c.categoryNo}</span>
+                                {" / "}게시물{" "}
+                                <span className="font-mono text-zinc-200">
+                                  {c.postCnt}
+                                </span>
+                                {c.risk === "high" && c.riskReason ? (
+                                  <>
+                                    {" / "}
+                                    <span className="text-zinc-300">
+                                      {c.riskReason}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </div>
+                              {disabled ? (
+                                <div className="mt-1 text-xs text-zinc-500">
+                                  비공개/접근 제한 가능성이 있어 분석 대상에서 제외됩니다.
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                 <Button
                   variant="primary"
                   onClick={async () => {
                     try {
-                      await runAnalyze(selectedCategoryNo);
+                      if (!selectedCategoryNos.length) {
+                        setError("분석할 카테고리를 1개 이상 선택해 주세요.");
+                        return;
+                      }
+                      await runAnalyze(selectedCategoryNos);
                     } catch (e) {
                       setPhase("error");
                       setError(
@@ -377,13 +440,19 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
                       );
                     }
                   }}
-                  disabled={!selectedCategoryNo}
+                  disabled={!selectedCategoryNos.length}
                 >
                   선택한 카테고리로 분석 시작
                 </Button>
                 <Button onClick={() => router.push("/")}>홈으로</Button>
               </div>
-            </div>
+
+              {error ? (
+                <div className="mt-4 rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white/90">
+                  {error}
+                </div>
+              ) : null}
+            </Modal>
           </div>
         ) : (
           <div className="w-full max-w-xl">

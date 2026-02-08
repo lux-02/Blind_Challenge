@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AttackGraph, BlindReport } from "@/lib/types";
+import type { BlindReport, PostInsights } from "@/lib/types";
 import { notifyStorageChanged } from "@/lib/storageBus";
 
 const STORAGE_KEY = "blindchallenge:latestReport";
@@ -14,36 +14,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v != null && !Array.isArray(v);
 }
 
-function severityWeight(sev: string) {
-  if (sev === "high") return 3;
-  if (sev === "medium") return 2;
-  return 1;
-}
-
-const PIECE_TYPE_WEIGHT: Record<string, number> = {
-  address_hint: 5,
-  photo_metadata: 5,
-  family: 4,
-  schedule: 3,
-  other: 1,
-};
-
-function pieceImportanceScore(p: BlindReport["extractedPieces"][number]) {
-  const base = PIECE_TYPE_WEIGHT[p.type] ?? 1;
-  const conf =
-    typeof p.evidence?.confidence === "number"
-      ? Math.max(0, Math.min(1, p.evidence.confidence))
-      : 0.6;
-  return base * (0.65 + conf * 0.7);
-}
-
-function findingImportanceScore(f: NonNullable<BlindReport["imageFindings"]>[number]) {
-  const sev = severityWeight(f.severity);
-  const conf = typeof f.confidence === "number" ? Math.max(0, Math.min(1, f.confidence)) : 0.6;
-  return sev * (0.85 + conf * 0.5);
-}
-
-export function useAttackGraphLLM(opts: {
+export function usePostInsightsLLM(opts: {
   report: BlindReport | null;
   setReport: React.Dispatch<React.SetStateAction<BlindReport | null>>;
   disabled?: boolean;
@@ -74,21 +45,20 @@ export function useAttackGraphLLM(opts: {
 
   const inputKey = useMemo(() => {
     if (!report) return null;
-    const pieceCount = report.extractedPieces?.length ?? 0;
-    const riskCount = report.riskNodes?.length ?? 0;
-    const scenarioCount = report.scenarios?.length ?? 0;
-    // We intentionally run the LLM graph twice:
-    // 1) early (text-only or partial), 2) once after vision completes (final image findings).
     const visionDone = report.vision?.status === "complete";
-    const imgCount = visionDone ? (report.imageFindings?.length ?? 0) : 0;
-    return `${report.blogId}|p${pieceCount}|i${imgCount}|r${riskCount}|s${scenarioCount}|v${visionDone ? "1" : "0"}`;
+    const pieceCount = report.extractedPieces?.length ?? 0;
+    const imgFindingCount = visionDone ? (report.imageFindings?.length ?? 0) : 0;
+    const postCount = report.contents?.length ?? 0;
+    return `${report.blogId}|posts${postCount}|p${pieceCount}|i${imgFindingCount}|v${visionDone ? "1" : "0"}`;
   }, [report]);
 
   const canRun = useMemo(() => {
     if (disabled) return false;
     if (!report) return false;
+    if (report.vision?.status !== "complete") return false;
+    if (!report.contents?.length) return false;
+    // Even if pieces are sparse, image findings alone can still be meaningful.
     if (!report.extractedPieces?.length && !report.imageFindings?.length) return false;
-    if (!report.riskNodes?.length || !report.scenarios?.length) return false;
     return true;
   }, [disabled, report]);
 
@@ -99,8 +69,7 @@ export function useAttackGraphLLM(opts: {
     if (!inputKey) return;
     if (inflightRef.current) return;
 
-    // Avoid spamming the API for the same input.
-    if (lastRequestedKeyRef.current === inputKey && r.attackGraph?.edges?.length) {
+    if (lastRequestedKeyRef.current === inputKey && r.postInsights?.posts?.length) {
       setState({ kind: "done" });
       return;
     }
@@ -113,40 +82,21 @@ export function useAttackGraphLLM(opts: {
     abortRef.current = ac;
 
     try {
-      // Noise cut: send only the most informative pieces/findings, but preserve original indices via index maps.
-      const piecesAll = r.extractedPieces ?? [];
-      const piecePick = piecesAll
-        .map((p, idx) => ({ idx, score: pieceImportanceScore(p) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 18)
-        .map((x) => x.idx);
-      const pieceIdxSet = new Set(piecePick);
-      // Keep stable ordering by original index so model sees a coherent flow.
-      const pieceIndexes = Array.from(pieceIdxSet).sort((a, b) => a - b);
-      const extractedPieces = pieceIndexes.map((i) => piecesAll[i]!).filter(Boolean);
-
-      const findingsAll = r.vision?.status === "complete" ? (r.imageFindings ?? []) : [];
-      const findingPick = findingsAll
-        .map((f, idx) => ({ idx, score: findingImportanceScore(f) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 14)
-        .map((x) => x.idx);
-      const findingIdxSet = new Set(findingPick);
-      const imageFindingIndexes = Array.from(findingIdxSet).sort((a, b) => a - b);
-      const imageFindings = imageFindingIndexes.map((i) => findingsAll[i]!).filter(Boolean);
-
-      const res = await fetch("/api/graph", {
+      const res = await fetch("/api/post-insights", {
         method: "POST",
         headers: { "content-type": "application/json" },
         signal: ac.signal,
         body: JSON.stringify({
           blogId: r.blogId,
-          extractedPieces,
-          extractedPieceIndexes: pieceIndexes,
-          imageFindings,
-          imageFindingIndexes,
-          riskNodes: r.riskNodes ?? [],
-          scenarios: r.scenarios ?? [],
+          contents: (r.contents ?? []).map((c) => ({
+            logNo: c.logNo,
+            url: c.url,
+            title: c.title,
+            publishedAt: c.publishedAt ?? "",
+            categoryName: c.categoryName ?? "",
+          })),
+          extractedPieces: r.extractedPieces ?? [],
+          imageFindings: r.imageFindings ?? [],
         }),
       });
 
@@ -162,7 +112,6 @@ export function useAttackGraphLLM(opts: {
         inflightRef.current = false;
         if (mountedRef.current) setState({ kind: "rate_limited", retryAfterMs });
         await sleep(retryAfterMs);
-        // Retry once, but allow key check to prevent loops.
         if (mountedRef.current) setState({ kind: "idle" });
         inflightRef.current = false;
         void run();
@@ -171,13 +120,15 @@ export function useAttackGraphLLM(opts: {
 
       if (!res.ok) {
         throw new Error(
-          json && typeof json.error === "string" ? json.error : `graph_api_${res.status}`,
+          json && typeof json.error === "string"
+            ? json.error
+            : `post_insights_api_${res.status}`,
         );
       }
 
-      const graph = json as unknown as AttackGraph;
-      if (!graph || !Array.isArray((graph as { edges?: unknown }).edges)) {
-        throw new Error("graph_invalid_response");
+      const insights = json as unknown as PostInsights;
+      if (!insights || !Array.isArray((insights as { posts?: unknown }).posts)) {
+        throw new Error("post_insights_invalid_response");
       }
 
       lastRequestedKeyRef.current = inputKey;
@@ -186,7 +137,7 @@ export function useAttackGraphLLM(opts: {
         if (!prev) return prev;
         const next: BlindReport = {
           ...prev,
-          attackGraph: graph,
+          postInsights: insights,
         };
         try {
           sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -205,7 +156,7 @@ export function useAttackGraphLLM(opts: {
       if (mountedRef.current) {
         setState({
           kind: "error",
-          message: e instanceof Error ? e.message : "graph_failed",
+          message: e instanceof Error ? e.message : "post_insights_failed",
         });
       }
     }
@@ -216,12 +167,9 @@ export function useAttackGraphLLM(opts: {
     if (!report) return;
     if (!inputKey) return;
 
-    // Run when graph missing, or when Vision completes and inputs changed.
-    const hasGraph = Boolean(report.attackGraph?.edges?.length);
+    const hasInsights = Boolean(report.postInsights?.posts?.length);
     const keyChanged = lastRequestedKeyRef.current !== inputKey;
-    if (!hasGraph || keyChanged) {
-      void run();
-    }
+    if (!hasInsights || keyChanged) void run();
   }, [canRun, inputKey, report, run]);
 
   const retry = useCallback(() => {
@@ -231,3 +179,4 @@ export function useAttackGraphLLM(opts: {
 
   return { state, retry };
 }
+

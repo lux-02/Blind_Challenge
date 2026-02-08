@@ -36,11 +36,18 @@ export default function ReportHeader(props: {
   blogId: string;
   demo?: boolean;
   category?: { categoryNo: number; categoryName: string } | null;
+  categories?: Array<{ categoryNo: number; categoryName: string }> | null;
   riskScore?: number | null;
   generatedAt?: string | null;
 }) {
-  const { blogId, demo = false, category = null, riskScore = null, generatedAt = null } =
-    props;
+  const {
+    blogId,
+    demo = false,
+    category = null,
+    categories = null,
+    riskScore = null,
+    generatedAt = null,
+  } = props;
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
 
@@ -57,7 +64,22 @@ export default function ReportHeader(props: {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   {demo ? <Tag tone="accent">DEMO</Tag> : null}
-                  {category?.categoryName ? (
+                  {Array.isArray(categories) && categories.length > 1 ? (
+                    <Tag className="max-w-[70vw] truncate" tone="neutral">
+                      카테고리{" "}
+                      <span className="text-white/85 font-semibold">
+                        {categories.length}
+                      </span>
+                      개{" "}
+                      <span className="text-white/55">
+                        ({categories
+                          .slice(0, 2)
+                          .map((c) => c.categoryName)
+                          .join(" · ")}
+                        {categories.length > 2 ? " · …" : ""})
+                      </span>
+                    </Tag>
+                  ) : category?.categoryName ? (
                     <Tag className="max-w-[70vw] truncate" tone="neutral">
                       {category.categoryName}{" "}
                       <span className="text-white/55">#{category.categoryNo}</span>

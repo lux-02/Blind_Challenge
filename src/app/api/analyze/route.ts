@@ -25,6 +25,18 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+type ScrapedPostBase = Awaited<ReturnType<typeof scrapePostsFromCategoryNo>>[number];
+type ScrapedPostWithMeta = ScrapedPostBase & { categoryNo: number; categoryName: string };
+type AnyScrapedPost = ScrapedPostBase | ScrapedPostWithMeta;
+
+function hasCategoryMeta(p: AnyScrapedPost): p is ScrapedPostWithMeta {
+  return (
+    typeof (p as Record<string, unknown>).categoryNo === "number" &&
+    Number.isFinite((p as Record<string, unknown>).categoryNo) &&
+    typeof (p as Record<string, unknown>).categoryName === "string"
+  );
+}
+
 function jsonFromText(text: string): unknown {
   const trimmed = text.trim();
   try {
@@ -137,6 +149,7 @@ async function callOpenAI(opts: {
     url: string;
     text: string;
     images: string[];
+    categoryName?: string;
   }>;
 }) {
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -149,6 +162,7 @@ async function callOpenAI(opts: {
       title: p.title,
       publishedAt: p.publishedAt ?? "",
       url: p.url,
+      categoryName: p.categoryName ?? "",
       // Hard cap per post to keep request bounded.
       text: p.text.slice(0, 6000),
       images: p.images.slice(0, 12),
@@ -233,7 +247,13 @@ async function callOpenAI(opts: {
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { blogId?: unknown; mode?: unknown; maxPosts?: unknown; categoryNo?: unknown }
+      | {
+          blogId?: unknown;
+          mode?: unknown;
+          maxPosts?: unknown;
+          categoryNo?: unknown;
+          categoryNos?: unknown;
+        }
       | null;
     const blogIdRaw = body?.blogId;
     const blogId = typeof blogIdRaw === "string" ? blogIdRaw.trim() : "";
@@ -262,6 +282,20 @@ export async function POST(req: Request) {
 
     const session = await createSession(blogId);
 
+    const categoriesRequestedRaw = Array.isArray(body?.categoryNos) ? body!.categoryNos : null;
+    const categoriesRequested = categoriesRequestedRaw
+      ? categoriesRequestedRaw
+          .map((x) =>
+            typeof x === "number" && Number.isFinite(x)
+              ? Math.floor(x)
+              : typeof x === "string" && /^\d+$/.test(x)
+                ? Number(x)
+                : null,
+          )
+          .filter((x): x is number => typeof x === "number" && x > 0)
+      : [];
+    const requestedUnique = Array.from(new Set(categoriesRequested)).slice(0, 12);
+
     // Determine category.
     let categoryNo: number | null = null;
     const categoryNoRaw = body?.categoryNo;
@@ -272,24 +306,49 @@ export async function POST(req: Request) {
     }
 
     let categoryName: string | undefined;
-    if (categoryNo == null) {
+    let selectedCategories: Array<{ categoryNo: number; categoryName: string }> | null = null;
+    let categoriesByNo: Map<number, string> | null = null;
+    let allCategories: Awaited<ReturnType<typeof fetchBlogCategories>> | null = null;
+    try {
       const categories = await fetchBlogCategories(blogId, session);
+      allCategories = categories;
+      categoriesByNo = new Map(categories.map((c) => [c.categoryNo, c.categoryName]));
+    } catch {
+      categoriesByNo = null;
+      allCategories = null;
+    }
+
+    if (requestedUnique.length) {
+      selectedCategories = requestedUnique.map((n) => ({
+        categoryNo: n,
+        categoryName: categoriesByNo?.get(n) ?? `categoryNo ${n}`,
+      }));
+      // For backward compatibility, keep single-category fields when exactly one selected.
+      if (selectedCategories.length === 1) {
+        categoryNo = selectedCategories[0]!.categoryNo;
+        categoryName = selectedCategories[0]!.categoryName;
+      } else {
+        categoryNo = null;
+        categoryName = selectedCategories.map((c) => c.categoryName).join(", ");
+      }
+    } else if (categoryNo == null) {
+      // Legacy flow: auto-pick a challenge category.
+      const categories = allCategories ?? (await fetchBlogCategories(blogId, session));
       const picked = pickChallengeCategoryCandidates(categories);
       categoryNo = picked.recommended?.categoryNo ?? null;
       categoryName = picked.recommended?.categoryName ?? undefined;
+      if (categoryNo != null && categoryName) {
+        selectedCategories = [{ categoryNo, categoryName }];
+      }
     } else {
       // Best-effort lookup for display.
-      try {
-        const categories = await fetchBlogCategories(blogId, session);
-        categoryName =
-          categories.find((c) => c.categoryNo === categoryNo)?.categoryName ??
-          undefined;
-      } catch {
-        // ignore lookup failures
+      categoryName = categoriesByNo?.get(categoryNo) ?? categoryName;
+      if (categoryNo != null && categoryName) {
+        selectedCategories = [{ categoryNo, categoryName }];
       }
     }
 
-    if (categoryNo == null) {
+    if (!requestedUnique.length && categoryNo == null) {
       const report = buildMockReport(blogId);
       report.warnings = [
         `블챌/주간일기 챌린지 카테고리를 자동으로 찾지 못했어요. (Mock 결과로 대체) 기본 키워드: "${DEFAULT_CATEGORY_NEEDLE}"`,
@@ -298,15 +357,52 @@ export async function POST(req: Request) {
       return NextResponse.json(report, { status: 200 });
     }
 
-    let posts: Awaited<ReturnType<typeof scrapePostsFromCategoryNo>> = [];
+    let posts: AnyScrapedPost[] = [];
+    const postsWithMeta: Array<
+      ScrapedPostBase & {
+        categoryNo: number;
+        categoryName: string;
+      }
+    > = [];
+    const warnings: string[] = [];
+
     try {
-      posts = await scrapePostsFromCategoryNo({
-        blogId,
-        categoryNo,
-        maxMatches: maxPosts,
-        maxDaysBack,
-        session,
-      });
+      if (requestedUnique.length) {
+        const perCategoryCap = 8;
+        const totalCap = maxPosts; // treat as total cap in multi-category mode too
+
+        let totalCollected = 0;
+        for (const cn of requestedUnique) {
+          const remaining = totalCap - totalCollected;
+          if (remaining <= 0) break;
+          const catCap = Math.min(perCategoryCap, remaining);
+          const name = categoriesByNo?.get(cn) ?? `categoryNo ${cn}`;
+          const list = await scrapePostsFromCategoryNo({
+            blogId,
+            categoryNo: cn,
+            maxMatches: catCap,
+            maxDaysBack,
+            session,
+          });
+          for (const p of list) {
+            postsWithMeta.push({ ...p, categoryNo: cn, categoryName: name });
+          }
+          totalCollected = postsWithMeta.length;
+        }
+
+        posts = postsWithMeta;
+        if (requestedUnique.length > 3 && posts.length >= totalCap) {
+          warnings.push("선택 카테고리가 많아 전체 게시물 수를 제한해 일부만 반영했습니다.");
+        }
+      } else if (categoryNo != null) {
+        posts = await scrapePostsFromCategoryNo({
+          blogId,
+          categoryNo,
+          maxMatches: maxPosts,
+          maxDaysBack,
+          session,
+        });
+      }
     } catch (e) {
       const report = buildMockReport(blogId);
       report.warnings = [
@@ -321,9 +417,12 @@ export async function POST(req: Request) {
     if (!posts.length) {
       const report = buildMockReport(blogId);
       report.warnings = [
-        `선택된 카테고리에서 최근 ${maxDaysBack}일 내 공개 게시물을 찾지 못했어요. (Mock 결과로 대체)`,
+        requestedUnique.length
+          ? `선택된 카테고리에서 최근 ${maxDaysBack}일 내 공개 게시물을 찾지 못했어요. (Mock 결과로 대체)`
+          : `선택된 카테고리에서 최근 ${maxDaysBack}일 내 공개 게시물을 찾지 못했어요. (Mock 결과로 대체)`,
       ];
-      if (categoryName) report.category = { categoryNo, categoryName };
+      if (categoryNo != null && categoryName) report.category = { categoryNo, categoryName };
+      if (selectedCategories?.length) report.categories = selectedCategories;
       report.source = { scrapedAt, postCount: 0 };
       return NextResponse.json(report, { status: 200 });
     }
@@ -341,19 +440,34 @@ export async function POST(req: Request) {
         publishedAt: p.publishedAt,
         text: p.text.slice(0, 6000),
         images: p.images,
+        ...(hasCategoryMeta(p)
+          ? { categoryNo: p.categoryNo, categoryName: p.categoryName }
+          : {}),
       }));
-      if (categoryName) report.category = { categoryNo, categoryName };
+      if (categoryNo != null && categoryName) report.category = { categoryNo, categoryName };
+      if (selectedCategories?.length) report.categories = selectedCategories;
       report.source = { scrapedAt, postCount: posts.length };
       return NextResponse.json(report, { status: 200 });
     }
 
     let ai: Record<string, unknown>;
     try {
+      const postsForAI: Parameters<typeof callOpenAI>[0]["posts"] = posts.map((p) => {
+        return {
+          title: p.title,
+          publishedAt: p.publishedAt,
+          url: p.url,
+          text: p.text,
+          images: p.images,
+          categoryName: hasCategoryMeta(p) ? p.categoryName : undefined,
+        };
+      });
+
       ai = await callOpenAI({
         apiKey,
         blogId,
         categoryName,
-        posts,
+        posts: postsForAI,
       });
     } catch (e) {
       const report = buildMockReport(blogId);
@@ -369,8 +483,12 @@ export async function POST(req: Request) {
         publishedAt: p.publishedAt,
         text: p.text.slice(0, 6000),
         images: p.images.slice(0, 12),
+        ...(hasCategoryMeta(p)
+          ? { categoryNo: p.categoryNo, categoryName: p.categoryName }
+          : {}),
       }));
-      if (categoryName) report.category = { categoryNo, categoryName };
+      if (categoryNo != null && categoryName) report.category = { categoryNo, categoryName };
+      if (selectedCategories?.length) report.categories = selectedCategories;
       report.source = { scrapedAt, postCount: posts.length };
       return NextResponse.json(report, { status: 200 });
     }
@@ -396,10 +514,12 @@ export async function POST(req: Request) {
       // Bound again to keep the response manageable for UI.
       text: p.text.slice(0, 6000),
       images: p.images,
+      ...(hasCategoryMeta(p)
+        ? { categoryNo: p.categoryNo, categoryName: p.categoryName }
+        : {}),
     }));
     // Vision pass is handled progressively from /report via /api/vision to avoid 429(TPM).
     const imageFindings: ImageFinding[] = [];
-    const warnings: string[] = [];
     const totalImages = contents.reduce((acc, c) => acc + (c.images?.length ?? 0), 0);
 
     const report: BlindReport = {
@@ -417,7 +537,8 @@ export async function POST(req: Request) {
         totalImages,
         cursor: totalImages ? { postIndex: 0, imageIndex: 0 } : undefined,
       },
-      category: categoryName ? { categoryNo, categoryName } : undefined,
+      category: categoryNo != null && categoryName ? { categoryNo, categoryName } : undefined,
+      categories: selectedCategories?.length ? selectedCategories : undefined,
       warnings: [
         ...(extractedPieces.length && riskNodes.length && scenarios.length
           ? []
