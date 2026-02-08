@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Font tokens (keep Tailwind v4 theme variables stable even if next/font is not used) */
+  --font-geist-sans: Pretendard, ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Noto Sans KR", Arial;
+  --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+
+  /* Blind Challenge theme tokens */
+  /* HUD / CRT-inspired (reference: monochrome panels + thin lines) */
+  --bc-bg: #04070d;
+  /* Surfaces */
+  --bc-panel: rgba(255, 255, 255, 0.04); /* legacy alias */
+  --bc-panel-border: rgba(255, 255, 255, 0.14); /* legacy alias */
+  --bc-surface-1: rgba(255, 255, 255, 0.03);
+  --bc-surface-2: rgba(255, 255, 255, 0.05);
+  /* Stronger lines for a harsher monochrome HUD read */
+  --bc-border: rgba(255, 255, 255, 0.18);
+  --bc-text: rgba(255, 255, 255, 0.92);
+  --bc-muted: rgba(255, 255, 255, 0.72);
+  --bc-faint: rgba(255, 255, 255, 0.45);
+
+  /* Monochrome HUD accents: keep it black/white only */
+  --bc-accent: rgba(255, 255, 255, 0.92);
+  --bc-accent2: rgba(255, 255, 255, 0.72);
+  --bc-warn: rgba(255, 255, 255, 0.92);
+  --bc-danger: rgba(255, 255, 255, 0.92);
+  --bc-ok: rgba(255, 255, 255, 0.92);
+
+  --bc-hud-line: rgba(255, 255, 255, 0.24);
+  --bc-hud-glow: rgba(255, 255, 255, 0.36);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-bc-bg: var(--bc-bg);
+  --color-bc-panel: var(--bc-panel);
+  --color-bc-panel-border: var(--bc-panel-border);
+  --color-bc-accent: var(--bc-accent);
+  --color-bc-accent2: var(--bc-accent2);
+  --color-bc-warn: var(--bc-warn);
+  --color-bc-danger: var(--bc-danger);
+  --color-bc-ok: var(--bc-ok);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--bc-bg);
+  color: var(--bc-text);
+  font-family: Pretendard, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Noto Sans KR", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  letter-spacing: -0.02em;
+}
+
+::selection {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+/* A11y: consistent focus styling for custom UI components */
+.bc-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bc-hud-glow);
+}
+
+/* HUD: scanlines + noise primitives (applied from layout.tsx) */
+.bc-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.06) 0px,
+    rgba(255, 255, 255, 0.06) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: overlay;
+}
+
+.bc-noise {
+  /* Chunky grain to mimic CRT sensor noise */
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04), transparent 55%);
+  background-size: 2px 2px, 4px 4px, 100% 100%;
+  background-position: 0 0, 1px 2px, 0 0;
+  opacity: 0.08;
+  filter: contrast(1.35);
+  mix-blend-mode: overlay;
+}
+
+.bc-vignette {
+  background: radial-gradient(
+    1200px circle at 50% 30%,
+    rgba(255, 255, 255, 0.06),
+    transparent 62%
+  );
+}
+
+/* Perf: allow long lists/details to be cheap until scrolled into view */
+.bc-cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 820px;
+}
+
+/* Landing micro-interaction: input focus glow on background grid */
+.bc-bgfx,
+.bc-gridfx {
+  transition: opacity 220ms ease, filter 220ms ease, transform 220ms ease;
+}
+
+html[data-bc-input-focus="1"] .bc-gridfx {
+  opacity: 0.65;
+  filter: drop-shadow(0 0 26px rgba(255, 255, 255, 0.16));
+}
+
+html[data-bc-input-focus="1"] .bc-bgfx {
+  filter: contrast(1.06);
+  transform: scale(1.01);
+}
+
+/* Reduced motion: avoid continuous scan/sweep effects and big hover jumps */
+@media (prefers-reduced-motion: reduce) {
+  .bc-bgfx,
+  .bc-gridfx {
+    transition: none;
+  }
+  .bc-anim-scan,
+  .bc-anim-sweep {
+    animation: none !important;
+  }
+}
