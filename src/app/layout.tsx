@@ -1,11 +1,47 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "pretendard/dist/web/static/pretendard.css";
 
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "http://localhost:3000";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
-  title: "Blind Challenge",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "네이버 블로그 OSINT 위험 진단 | Blind Challenge",
+    template: "%s | Blind Challenge",
+  },
   description:
-    "네이버 블로그 #블챌(주간일기)에서 드러나는 OSINT/개인정보 노출 위험을 시각화하는 보안 진단 MVP.",
+    "네이버 블로그 공개 글(블챌/주간일기)에서 개인정보·생활패턴 노출 단서를 찾아 위험 요소와 공격 시나리오로 연결해 시각화하는 OSINT 보안 진단 도구.",
+  openGraph: {
+    type: "website",
+    siteName: "Blind Challenge",
+    locale: "ko_KR",
+    title: "네이버 블로그 OSINT 위험 진단 | Blind Challenge",
+    description:
+      "네이버 블로그 공개 글(블챌/주간일기)에서 개인정보·생활패턴 노출 단서를 찾아 위험 요소와 공격 시나리오로 연결해 시각화합니다.",
+    url: "/",
+    images: [{ url: "/opengraph-image.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "네이버 블로그 OSINT 위험 진단 | Blind Challenge",
+    description:
+      "네이버 블로그 공개 글(블챌/주간일기) 기반 OSINT 위험 신호를 단서 -> 위험 -> 공격 시나리오로 연결해 보여주는 보안 진단 도구.",
+    images: ["/twitter-image.png"],
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png" }],
+  },
 };
 
 export default function RootLayout({
