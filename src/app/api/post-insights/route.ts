@@ -21,6 +21,10 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function maskDigits(s: string) {
+  return s.replace(/\d{6,}/g, (m) => `${m.slice(0, 2)}***${m.slice(-2)}`);
+}
+
 function stripCodeFences(s: string) {
   return s.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
 }
@@ -65,6 +69,94 @@ function extractJsonObjectFromChatCompletions(text: string): Record<string, unkn
   const obj = jsonFromText(content);
   if (!isRecord(obj)) throw new Error("openai_invalid_json_object");
   return obj;
+}
+
+function findMatchingBracket(
+  s: string,
+  openPos: number,
+  openChar: "[" | "{",
+  closeChar: "]" | "}",
+): number {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = openPos; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === "\"") inStr = false;
+      continue;
+    }
+    if (ch === "\"") {
+      inStr = true;
+      continue;
+    }
+    if (ch === openChar) depth += 1;
+    else if (ch === closeChar) {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function extractObjectChunksFromArrayText(arrayInner: string): string[] {
+  const chunks: string[] = [];
+  let inStr = false;
+  let esc = false;
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < arrayInner.length; i++) {
+    const ch = arrayInner[i]!;
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === "\"") inStr = false;
+      continue;
+    }
+    if (ch === "\"") {
+      inStr = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+      continue;
+    }
+    if (ch === "}") {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        chunks.push(arrayInner.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return chunks;
+}
+
+function salvagePostsOnly(jsonObjectLike: string): Record<string, unknown> | null {
+  const hay = normalizeJsonText(jsonObjectLike);
+  const keyPos = hay.indexOf("\"posts\"");
+  if (keyPos < 0) return null;
+
+  const arrOpen = hay.indexOf("[", keyPos);
+  if (arrOpen < 0) return null;
+  const arrClose = findMatchingBracket(hay, arrOpen, "[", "]");
+  const inner = arrClose < 0 ? hay.slice(arrOpen + 1) : hay.slice(arrOpen + 1, arrClose);
+  const chunks = extractObjectChunksFromArrayText(inner);
+  if (!chunks.length) return null;
+
+  const posts: unknown[] = [];
+  for (const c of chunks) {
+    try {
+      posts.push(JSON.parse(normalizeJsonText(c)));
+    } catch {
+      // skip
+    }
+  }
+  if (!posts.length) return null;
+  return { posts };
 }
 
 function sanitizePostInsight(v: unknown): PostInsight | null {
@@ -188,7 +280,8 @@ async function callOpenAI(opts: {
   const baseBody: Record<string, unknown> = {
     model: opts.model,
     temperature: 0,
-    max_tokens: 1200,
+    // Chunked requests: keep per-call completion large enough to avoid truncation.
+    max_tokens: 1800,
     messages: [
       { role: "system", content: system },
       { role: "user", content: JSON.stringify(payload) },
@@ -315,73 +408,126 @@ export async function POST(req: Request) {
   }
 
   const model = process.env.OPENAI_POST_INSIGHTS_MODEL || "gpt-4o-mini";
-  const res = await callOpenAI({
-    apiKey,
-    model,
-    blogId,
-    posts: contents.map((c) => ({
-      ...c,
-      textEvidence: (piecesByLogNo.get(c.logNo) ?? [])
-        .slice(0, 10)
-        .map((p) => ({
-          type: p.type,
-          value: p.value.slice(0, 140),
-          excerpt: p.evidence?.excerpt.slice(0, 200) ?? "",
-          rationale: p.evidence?.rationale.slice(0, 220) ?? "",
-          confidence: p.evidence?.confidence,
-        }))
-        .filter((x) => x.excerpt && x.rationale),
-      imageEvidence: (findingsByLogNo.get(c.logNo) ?? []).slice(0, 10).map((f) => ({
-        label: f.label.slice(0, 100),
-        severity: f.severity,
-        excerpt: f.excerpt.slice(0, 200),
-        rationale: f.rationale.slice(0, 220),
-        confidence: f.confidence,
-      })),
-    })),
+  const prepared = contents.map((c) => {
+    const textEvidence = (piecesByLogNo.get(c.logNo) ?? [])
+      .slice(0, 10)
+      .map((p) => ({
+        type: p.type,
+        value: p.value.slice(0, 140),
+        excerpt: p.evidence?.excerpt.slice(0, 200) ?? "",
+        rationale: p.evidence?.rationale.slice(0, 220) ?? "",
+        confidence: p.evidence?.confidence,
+      }))
+      .filter((x) => x.excerpt && x.rationale);
+
+    const imageEvidence = (findingsByLogNo.get(c.logNo) ?? []).slice(0, 10).map((f) => ({
+      label: f.label.slice(0, 100),
+      severity: f.severity,
+      excerpt: f.excerpt.slice(0, 200),
+      rationale: f.rationale.slice(0, 220),
+      confidence: f.confidence,
+    }));
+
+    return { ...c, textEvidence, imageEvidence };
   });
 
-  const txt = await res.text().catch(() => "");
-  if (!res.ok) {
-    if (res.status === 429) {
-      const retryAfterMs = getRetryAfterMs(res.headers, 8000);
-      return NextResponse.json(
-        { error: "openai_post_insights_429", retryAfterMs },
-        { status: 429, headers: { "retry-after": String(Math.ceil(retryAfterMs / 1000)) } },
-      );
+  const noEvidencePosts = prepared.filter((p) => !p.textEvidence.length && !p.imageEvidence.length);
+  const withEvidencePosts = prepared.filter((p) => p.textEvidence.length || p.imageEvidence.length);
+
+  const chunkSize = 4;
+  const chunks: typeof withEvidencePosts[] = [];
+  for (let i = 0; i < withEvidencePosts.length; i += chunkSize) {
+    chunks.push(withEvidencePosts.slice(i, i + chunkSize));
+  }
+
+  const outByLogNo = new Map<string, PostInsight>();
+  const warnings: string[] = [];
+
+  for (const p of noEvidencePosts) {
+    outByLogNo.set(p.logNo, {
+      logNo: p.logNo,
+      summary:
+        "현재 탐지된 텍스트/이미지 에비던스가 없어 자동 통합 분석을 생략했습니다. 단, 비공개 글/수집 실패/모델 누락으로 단서가 반영되지 않았을 수 있습니다. 민감정보가 포함된 사진(라벨/서류/명찰)이나 일정/동선/관계 정보가 없는지 수동 점검을 권장합니다.",
+      riskSignals: [],
+      evidence: [],
+      defensiveActions: [
+        "민감한 사진(라벨/서류/명찰) 포함 여부 점검",
+        "동선/시간/관계 단서 문장 점검",
+        "공개 범위(전체공개/이웃공개/비공개) 재확인",
+      ],
+    });
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]!;
+    const res = await callOpenAI({
+      apiKey,
+      model,
+      blogId,
+      posts: chunk,
+    });
+
+    const txt = await res.text().catch(() => "");
+    if (!res.ok) {
+      if (res.status === 429) {
+        const retryAfterMs = getRetryAfterMs(res.headers, 8000);
+        return NextResponse.json(
+          { error: "openai_post_insights_429", retryAfterMs },
+          { status: 429, headers: { "retry-after": String(Math.ceil(retryAfterMs / 1000)) } },
+        );
+      }
+      warnings.push(`chunk ${i + 1}/${chunks.length} 생성 실패: openai_${res.status}`);
+      continue;
     }
-    return NextResponse.json(
-      { error: `openai_post_insights_${res.status}`, details: txt.slice(0, 240) },
-      { status: 502 },
-    );
+
+    let obj: Record<string, unknown> | null = null;
+    try {
+      obj = extractJsonObjectFromChatCompletions(txt);
+    } catch (e) {
+      console.error("post-insights parse failed", {
+        message: e instanceof Error ? e.message : "unknown",
+        chunk: `${i + 1}/${chunks.length}`,
+        prefix: maskDigits(txt.slice(0, 800)),
+      });
+
+      // Best-effort salvage from message content.
+      try {
+        const outer = JSON.parse(txt) as { choices?: Array<{ message?: { content?: string } }> };
+        const content = outer.choices?.[0]?.message?.content ?? "";
+        if (content) obj = salvagePostsOnly(content);
+      } catch {
+        obj = null;
+      }
+
+      if (!obj) {
+        warnings.push(`chunk ${i + 1}/${chunks.length} JSON 파싱 실패(부분 결과로 대체)`);
+        continue;
+      }
+    }
+
+    const items = Array.isArray(obj.posts) ? obj.posts : [];
+    const postsOut = items.map(sanitizePostInsight).filter(Boolean) as PostInsight[];
+    for (const p of postsOut) outByLogNo.set(p.logNo, p);
   }
 
-  let obj: Record<string, unknown>;
-  try {
-    obj = extractJsonObjectFromChatCompletions(txt);
-  } catch (e) {
-    return NextResponse.json(
-      { error: "openai_post_insights_parse_failed", details: e instanceof Error ? e.message : "unknown" },
-      { status: 502 },
-    );
-  }
-
-  const items = Array.isArray(obj.posts) ? obj.posts : [];
-  const postsOut = items.map(sanitizePostInsight).filter(Boolean) as PostInsight[];
+  const postsFinal: PostInsight[] = contents
+    .map((c) => outByLogNo.get(c.logNo) ?? null)
+    .filter(Boolean) as PostInsight[];
 
   const insights: PostInsights = {
     generatedAt: nowISO(),
     model,
-    posts: postsOut,
-    warnings: [],
+    posts: postsFinal,
+    warnings: warnings.length ? warnings.slice(0, 10) : undefined,
   };
 
-  // If model output is incomplete, keep a warning but still return the partial result.
-  const missing = contents.filter((c) => !postsOut.some((p) => p.logNo === c.logNo)).length;
+  const missing = contents.filter((c) => !outByLogNo.has(c.logNo)).length;
   if (missing > 0) {
-    insights.warnings = [`일부 포스트 통합 분석이 누락될 수 있어요: ${missing}개`];
+    insights.warnings = [
+      ...(insights.warnings ?? []),
+      `일부 포스트 통합 분석이 누락될 수 있어요: ${missing}개`,
+    ].slice(0, 10);
   }
 
   return NextResponse.json(insights, { status: 200 });
 }
-
