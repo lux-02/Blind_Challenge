@@ -36,6 +36,8 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 - Report: 그래프는 요약 모드 기본(중복 단서 축약/저강도 연결 감소) + 위험 중심 클러스터 레이아웃. Evidence의 "근거 있는 것만"은 포스트도 필터링하고 본문/이미지 목록을 기본 숨김(토글로 전체 보기).
 - Report: Vision 완료 후 `/api/post-insights`로 포스트별 텍스트+이미지 통합 분석 자동 생성 및 Evidence에 표시.
 - Vision: 이미지 분석 출력 한국어 강제 프롬프트 강화.
+- README 문서화: Project Overview / Architecture / Flow Diagram / Functional Requirements / Schema / API Spec 섹션 추가.
+- 샘플 리포트(buildMockReport) 보강: contents/단서/이미지 단서/그래프/포스트 인사이트/스코어링 포함. “크롤링/AI 분석은 연결 단계” 문구 제거.
 
 ## Next Actions
 
@@ -50,4 +52,6 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 
 ## Recent Commands
 
+- `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok
+- `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok

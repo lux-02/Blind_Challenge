@@ -16,11 +16,11 @@ function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
-function daysAgo(dateISO?: string) {
+function daysAgo(dateISO: string | undefined, nowMs: number) {
   if (!dateISO) return null;
   const d = new Date(dateISO);
   if (!Number.isFinite(d.getTime())) return null;
-  const diff = Date.now() - d.getTime();
+  const diff = nowMs - d.getTime();
   return Math.floor(diff / (24 * 60 * 60 * 1000));
 }
 
@@ -42,7 +42,8 @@ function imageFindingScore(f: ImageFinding) {
   return sev * (0.55 + conf * 0.9);
 }
 
-export function scoreReport(report: BlindReport): ReportScoring {
+export function scoreReport(report: BlindReport, opts?: { nowMs?: number }): ReportScoring {
+  const nowMs = typeof opts?.nowMs === "number" && Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now();
   const contents = report.contents ?? [];
   const pieces = report.extractedPieces ?? [];
   const findings = report.imageFindings ?? [];
@@ -82,7 +83,7 @@ export function scoreReport(report: BlindReport): ReportScoring {
   // Recency bonus: if there are risky posts in last 30 days, add a small bump.
   let recency = 0;
   for (const c of contents) {
-    const d = daysAgo(c.publishedAt);
+    const d = daysAgo(c.publishedAt, nowMs);
     if (d == null) continue;
     const hasSignals =
       (pieceIndexesByLogNo.get(c.logNo)?.length ?? 0) +
@@ -105,7 +106,7 @@ export function scoreReport(report: BlindReport): ReportScoring {
         0,
       );
 
-      const d = daysAgo(c.publishedAt);
+      const d = daysAgo(c.publishedAt, nowMs);
       const rBonus = d != null && d <= 30 ? (d <= 7 ? 1.4 : 1.15) : 1.0;
       const score = round1((pScore + iScore) * rBonus);
 

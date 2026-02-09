@@ -351,7 +351,7 @@ export async function POST(req: Request) {
     if (!requestedUnique.length && categoryNo == null) {
       const report = buildMockReport(blogId);
       report.warnings = [
-        `블챌/주간일기 챌린지 카테고리를 자동으로 찾지 못했어요. (Mock 결과로 대체) 기본 키워드: "${DEFAULT_CATEGORY_NEEDLE}"`,
+        `블챌/주간일기 챌린지 카테고리를 자동으로 찾지 못했어요. 샘플 리포트로 대체합니다. (기본 키워드: "${DEFAULT_CATEGORY_NEEDLE}")`,
       ];
       report.source = { scrapedAt, postCount: 0 };
       return NextResponse.json(report, { status: 200 });
@@ -407,8 +407,8 @@ export async function POST(req: Request) {
       const report = buildMockReport(blogId);
       report.warnings = [
         e instanceof Error
-          ? `네이버 수집 단계에서 실패했어요. (Mock 결과로 대체) 원인: ${e.message}`
-          : "네이버 수집 단계에서 실패했어요. (Mock 결과로 대체)",
+          ? `네이버 수집 단계에서 실패했어요. 샘플 리포트로 대체합니다. 원인: ${e.message}`
+          : "네이버 수집 단계에서 실패했어요. 샘플 리포트로 대체합니다.",
       ];
       report.source = { scrapedAt, postCount: 0 };
       return NextResponse.json(report, { status: 200 });
@@ -418,8 +418,8 @@ export async function POST(req: Request) {
       const report = buildMockReport(blogId);
       report.warnings = [
         requestedUnique.length
-          ? `선택된 카테고리에서 최근 ${maxDaysBack}일 내 공개 게시물을 찾지 못했어요. (Mock 결과로 대체)`
-          : `선택된 카테고리에서 최근 ${maxDaysBack}일 내 공개 게시물을 찾지 못했어요. (Mock 결과로 대체)`,
+          ? `선택된 카테고리에서 최근 ${maxDaysBack}일 내 공개 게시물을 찾지 못했어요. 샘플 리포트로 대체합니다.`
+          : `선택된 카테고리에서 최근 ${maxDaysBack}일 내 공개 게시물을 찾지 못했어요. 샘플 리포트로 대체합니다.`,
       ];
       if (categoryNo != null && categoryName) report.category = { categoryNo, categoryName };
       if (selectedCategories?.length) report.categories = selectedCategories;
@@ -431,7 +431,7 @@ export async function POST(req: Request) {
     if (!apiKey) {
       const report = buildMockReport(blogId);
       report.warnings = [
-        "OPENAI_API_KEY가 설정되지 않아 GPT 분석을 건너뛰었습니다. (Mock 결과로 대체)",
+        "OPENAI_API_KEY가 설정되지 않아 AI 분석을 건너뛰었습니다. 샘플 리포트 형식으로 표시합니다.",
       ];
       report.contents = posts.map((p) => ({
         logNo: p.logNo,
@@ -473,8 +473,8 @@ export async function POST(req: Request) {
       const report = buildMockReport(blogId);
       report.warnings = [
         e instanceof Error
-          ? `GPT 분석 실패로 Mock 결과로 대체했습니다: ${e.message}`
-          : "GPT 분석 실패로 Mock 결과로 대체했습니다.",
+          ? `AI 분석이 일시적으로 실패해 샘플 리포트로 대체했습니다: ${e.message}`
+          : "AI 분석이 일시적으로 실패해 샘플 리포트로 대체했습니다.",
       ];
       report.contents = posts.map((p) => ({
         logNo: p.logNo,
