@@ -560,7 +560,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                 </section>
               ) : null}
 
-              <section className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
                   <div className="text-xs text-zinc-400">수집 게시물</div>
                   <div className="mt-2 font-mono text-2xl font-semibold text-white">
@@ -720,7 +720,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                     {topRiskPostsResolved.map((p) => (
                       <button
                         key={p.logNo}
@@ -778,7 +778,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                 <p className="mt-2 text-sm text-zinc-300">
                   공포가 아니라, 지금 당장 바꿀 수 있는 행동을 제안합니다.
                 </p>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                   <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                     <div className="text-xs font-semibold text-white">공개 범위</div>
                     <div className="mt-2 text-sm text-zinc-200">
@@ -934,7 +934,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-zinc-200 lg:grid-cols-4">
+              <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-zinc-200 lg:grid-cols-4">
                 <div className="lg:col-span-1">
                   <div className="text-xs text-zinc-400">단서 타입</div>
                   <select
@@ -984,7 +984,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-4 lg:grid-cols-5">
+              <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-5">
                 <div className="lg:col-span-2">
                   <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -1018,7 +1018,9 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                 {p.evidencePostDate}
                               </div>
                             </div>
-                            <div className="mt-1 text-sm text-zinc-200">{p.value}</div>
+                            <div className="mt-1 break-words text-sm text-zinc-200 [overflow-wrap:anywhere]">
+                              {p.value}
+                            </div>
                             {typeof p.evidence?.confidence === "number" ? (
                               <div className="mt-2 text-[11px] text-zinc-400">
                                 confidence:{" "}
@@ -1028,7 +1030,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                               </div>
                             ) : null}
                             {p.evidence?.excerpt ? (
-                              <div className="mt-2 line-clamp-2 rounded-lg border border-white/10 bg-black/20 p-2 font-mono text-xs leading-5 text-zinc-300">
+                              <div className="mt-2 line-clamp-2 break-words rounded-lg border border-white/10 bg-black/20 p-2 font-mono text-xs leading-5 text-zinc-300 [overflow-wrap:anywhere]">
                                 {p.evidence.excerpt}
                               </div>
                             ) : null}
@@ -1228,7 +1230,9 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                           {activeEvidence.pieceType}
                                         </span>
                                         <span className="mx-2 text-zinc-400">|</span>
-                                        {activeEvidence.pieceValue}
+                                        <span className="break-words [overflow-wrap:anywhere]">
+                                          {activeEvidence.pieceValue}
+                                        </span>
                                       </div>
                                     </div>
                                     {typeof activeEvidence.confidence === "number" ? (
@@ -1242,7 +1246,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                   </div>
                                   <div className="mt-3">
                                     <div className="text-xs text-zinc-400">발췌</div>
-                                    <div className="mt-1 rounded-md border border-white/10 bg-black/20 p-2 font-mono text-xs leading-5 text-zinc-100">
+                                    <div className="mt-1 break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-xs leading-5 text-zinc-100 [overflow-wrap:anywhere]">
                                       {activeEvidence.excerpt}
                                     </div>
                                   </div>
@@ -1312,7 +1316,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                   ) : null}
                                   <div className="mt-3">
                                     <div className="text-xs text-zinc-400">요약</div>
-                                    <div className="mt-1 rounded-md border border-white/10 bg-black/20 p-2 font-mono text-xs leading-5 text-zinc-100">
+                                    <div className="mt-1 break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-xs leading-5 text-zinc-100 [overflow-wrap:anywhere]">
                                       {activeImageFinding.excerpt}
                                     </div>
                                   </div>
@@ -1385,7 +1389,9 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                                 </span>
                                               </div>
                                               <div className="mt-1 line-clamp-2 text-sm text-zinc-200">
-                                                {f.excerpt}
+                                                <span className="break-words [overflow-wrap:anywhere]">
+                                                  {f.excerpt}
+                                                </span>
                                               </div>
                                             </div>
                                           </div>
@@ -1428,7 +1434,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                               {p.evidencePostDate}
                                             </div>
                                           </div>
-                                          <div className="mt-1 text-sm text-zinc-200">
+                                          <div className="mt-1 break-words text-sm text-zinc-200 [overflow-wrap:anywhere]">
                                             {p.value}
                                           </div>
                                         </button>
@@ -1471,7 +1477,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
                                         .map((p, idx) => (
                                           <div
                                             key={`${c.logNo}-ev-${idx}`}
-                                            className="rounded-md border border-white/10 bg-black/30 p-2 font-mono text-xs leading-5 text-zinc-200"
+                                            className="break-words rounded-md border border-white/10 bg-black/30 p-2 font-mono text-xs leading-5 text-zinc-200 [overflow-wrap:anywhere]"
                                           >
                                             {p.evidence!.excerpt}
                                           </div>
@@ -1550,7 +1556,7 @@ export default function ReportClient({ blogId }: { blogId: string }) {
           ) : null}
 
           {tab === "training" ? (
-            <section className="mt-6 grid gap-4 lg:grid-cols-2">
+            <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>

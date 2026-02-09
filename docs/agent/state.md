@@ -41,6 +41,7 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 - Branding: `fav.png` 기반으로 `src/app/favicon.ico` 갱신 + `src/app/icon.png`/`src/app/apple-icon.png` 추가, `metadata.icons` 설정.
 - README 상단에 `top_logo.svg` 로고 적용.
 - SEO: App Router `metadata` 보강(페이지별 title/description/canonical/OG/Twitter), `viewport` 추가, `robots.txt`/`sitemap.xml` 생성, 홈에 Organization/WebSite JSON-LD 추가, OG/Twitter 이미지 추가.
+- Report mobile: Evidence(단서) 섹션에서 base grid columns 누락으로 implicit column이 max-content 폭을 가져 horizontal overflow 발생 -> `grid-cols-1` 추가 + 긴 문자열 `overflow-wrap:anywhere` 적용.
 
 ## Next Actions
 
@@ -61,3 +62,4 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok (icons 추가)
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok (SEO 메타/robots/sitemap)
 - `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok (SEO title 조정)
+- `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok (Report mobile overflow fix)

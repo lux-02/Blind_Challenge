@@ -92,7 +92,7 @@ export default function ReportHeader(props: {
                   <div className="font-mono text-[10px] tracking-[0.22em] text-white/55">
                     TARGET
                   </div>
-                  <div className="font-mono text-base font-semibold text-white">
+                  <div className="break-words font-mono text-base font-semibold text-white [overflow-wrap:anywhere]">
                     {blogId}
                   </div>
                 </div>
