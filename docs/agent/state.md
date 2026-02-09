@@ -38,6 +38,9 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 - Vision: 이미지 분석 출력 한국어 강제 프롬프트 강화.
 - README 문서화: Project Overview / Architecture / Flow Diagram / Functional Requirements / Schema / API Spec 섹션 추가.
 - 샘플 리포트(buildMockReport) 보강: contents/단서/이미지 단서/그래프/포스트 인사이트/스코어링 포함. “크롤링/AI 분석은 연결 단계” 문구 제거.
+- Branding: `fav.png` 기반으로 `src/app/favicon.ico` 갱신 + `src/app/icon.png`/`src/app/apple-icon.png` 추가, `metadata.icons` 설정.
+- README 상단에 `top_logo.svg` 로고 적용.
+- SEO: App Router `metadata` 보강(페이지별 title/description/canonical/OG/Twitter), `viewport` 추가, `robots.txt`/`sitemap.xml` 생성, 홈에 Organization/WebSite JSON-LD 추가, OG/Twitter 이미지 추가.
 
 ## Next Actions
 
@@ -55,3 +58,6 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok
 - `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok
+- `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok (icons 추가)
+- `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok (SEO 메타/robots/sitemap)
+- `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok (SEO title 조정)

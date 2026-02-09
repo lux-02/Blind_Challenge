@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./public/brand/top_logo.svg" alt="Blind Challenge" width="520" />
+</p>
+
 Blind Challenge (블라인드 챌린지) MVP
 
 네이버 블로그 챌린지(예: #블챌) 카테고리의 공개 글을 수집해 OSINT 관점의 위험 신호를 추출하고,
@@ -7,10 +11,10 @@ Blind Challenge (블라인드 챌린지) MVP
 
 ## 1. 프로젝트 개요 (Project Overview)
 
-- **목표**: 공개된 네이버 블로그 글(텍스트/이미지)에서 개인정보·생활패턴 노출 “단서”를 찾아내고, 이를 바탕으로 **위험 요소(Risk)**와 **공격 시나리오(Scenario)**를 *방어 목적*으로 설명합니다.
-- **핵심 출력물**: `Clue(단서) -> Risk(위험) -> Scenario(시나리오)` 그래프 + Evidence(근거) 탐색기 + 훈련용 피싱 시뮬레이션(SMS/대본).
-- **저장 정책**: 서버 DB 저장 없음. 분석 결과는 브라우저 `sessionStorage`의 `blindchallenge:latestReport`에만 저장됩니다.
-- **안전/윤리**: 범죄 실행을 돕지 않습니다. 출력은 PII를 그대로 노출하지 않도록 마스킹/축약을 적용하고, 피싱 시뮬레이터는 링크/계좌/전화번호/기관사칭 디테일을 금지합니다.
+- 목표: 공개된 네이버 블로그 글(텍스트/이미지)에서 개인정보·생활패턴 노출 “단서”를 찾아내고, 이를 바탕으로 위험 요소(Risk)와 공격 시나리오(Scenario)를 *방어 목적*으로 설명합니다.
+- 핵심 출력물: `Clue(단서) -> Risk(위험) -> Scenario(시나리오)` 그래프 + Evidence(근거) 탐색기 + 훈련용 피싱 시뮬레이션(SMS/대본).
+- 저장 정책: 서버 DB 저장 없음. 분석 결과는 브라우저 `sessionStorage`의 `blindchallenge:latestReport`에만 저장됩니다.
+- 안전/윤리: 범죄 실행을 돕지 않습니다. 출력은 PII를 그대로 노출하지 않도록 마스킹/축약을 적용하고, 피싱 시뮬레이터는 링크/계좌/전화번호/기관사칭 디테일을 금지합니다.
 
 ## Getting Started
 
@@ -65,18 +69,18 @@ npm run dev
 
 ### Tech Stack
 
-- **Frontend**: Next.js(App Router), React, TypeScript
-- **Styling/UX**: Tailwind CSS, framer-motion, lucide-react
-- **Graph**: React Flow(`reactflow`)
-- **Scraping/Parsing**: `m.blog.naver.com` API + HTML parsing(cheerio)
-- **LLM**: OpenAI Chat Completions(텍스트/그래프/피싱) + Vision(이미지 단서)
-- **State**: 서버 DB 없음, 클라이언트 `sessionStorage` 중심
+- : Next.js(App Router), React, TypeScript
+- Styling/UX: Tailwind CSS, framer-motion, lucide-react
+- Graph: React Flow(`reactflow`)
+- Scraping/Parsing: `m.blog.naver.com` API + HTML parsing(cheerio)
+- LLM: OpenAI Chat Completions(텍스트/그래프/피싱) + Vision(이미지 단서)
+- State: 서버 DB 없음, 클라이언트 `sessionStorage` 중심
 
 ### Key Design Points
 
-- API Route는 App Router의 Route Handler(`src/app/api/**/route.ts`)로 구현되어 있고, **`runtime = "nodejs"`**, **`dynamic = "force-dynamic"`**로 런타임/캐시를 고정합니다.
-- 이미지 다운로드는 **SSRF 완화**를 위해 `*.pstatic.net` allowlist만 허용합니다(그 외 URL은 무시).
-- Vision은 429(TPM) 리스크를 줄이기 위해 **점진 처리(Progressive batching)**로 동작합니다.
+- API Route는 App Router의 Route Handler(`src/app/api/**/route.ts`)로 구현되어 있고,`runtime = "nodejs"`, `dynamic = "force-dynamic"`로 런타임/캐시를 고정합니다.
+- 이미지 다운로드는 SSRF 완화를 위해 `*.pstatic.net` allowlist만 허용합니다(그 외 URL은 무시).
+- Vision은 429(TPM) 리스크를 줄이기 위해 점진 처리(Progressive batching)로 동작합니다.
 
 ### 📊 System Flow (Sequence Diagram)
 
@@ -160,33 +164,33 @@ flowchart LR
 
 ### 3.1 Target 입력 (/)
 
-- 사용자는 네이버 **blogId**(예: `someid`) 또는 블로그 URL을 입력할 수 있어야 합니다.
+- 사용자는 네이버 blogId(예: `someid`) 또는 블로그 URL을 입력할 수 있어야 합니다.
 - 입력값은 내부적으로 `blogId`로 정규화되어 `/analysis?blogId=...`로 이동해야 합니다.
 
 ### 3.2 Recon: 카테고리 정찰 (/analysis, `/api/naver/recon`)
 
-- 시스템은 blogId의 카테고리 목록을 수집하고, (가능하면) **최근 1년 내 활동 카테고리**만 후보로 남겨야 합니다.
-- 각 카테고리는 **OSINT 관점 위험도(high/normal)**를 갖고, 기본 선택값은 `high 또는 챌린지 카테고리` 위주여야 합니다.
+- 시스템은 blogId의 카테고리 목록을 수집하고, (가능하면) 최근 1년 내 활동 카테고리만 후보로 남겨야 합니다.
+- 각 카테고리는 OSINT 관점 위험도(high/normal)를 갖고, 기본 선택값은 `high 또는 챌린지 카테고리` 위주여야 합니다.
 - 사용자에게 체크박스 UI로 다중 선택을 제공해야 합니다(접근 제한 카테고리는 비활성화).
 
 ### 3.3 Analyze: 텍스트 기반 분석 (/api/analyze)
 
 - 선택된 카테고리(단일/다중)에서 최근 1년 공개 게시물을 수집해야 합니다(총량 cap).
-- 게시물 텍스트에서 **단서(ExtractedPiece)**를 추출하고, 이를 설명 가능한 **RiskNode/Scenario**로 정리해야 합니다.
+- 게시물 텍스트에서 단서(ExtractedPiece)를 추출하고, 이를 설명 가능한 RiskNode/Scenario로 정리해야 합니다.
 - 결과는 `BlindReport`로 반환되어 UI에서 Evidence 탐색이 가능해야 합니다(각 piece는 postUrl/logNo 기반 근거 포함).
-- OpenAI 호출/네이버 수집이 실패해도 **Mock 리포트로 폴백**하여 데모가 끊기지 않아야 합니다(단, warnings로 표시).
+- OpenAI 호출/네이버 수집이 실패해도 Mock 리포트로 폴백하여 데모가 끊기지 않아야 합니다(단, warnings로 표시).
 
 ### 3.4 Vision: 이미지 단서 점진 처리 (/api/vision)
 
-- 게시물 이미지 URL을 다운로드하여 Vision 모델에 전달하고, **PII를 직접 노출하지 않는** 형태로 findings를 생성해야 합니다.
+- 게시물 이미지 URL을 다운로드하여 Vision 모델에 전달하고, PII를 직접 노출하지 않는 형태로 findings를 생성해야 합니다.
 - 429(TPM) 발생 시 `retryAfterMs`로 재시도 타이밍을 안내해야 합니다.
-- 진행 상태는 `vision: { status, processedImages, totalImages, cursor }`로 추적되어 **중단 후 재개**가 가능해야 합니다.
+- 진행 상태는 `vision: { status, processedImages, totalImages, cursor }`로 추적되어 중단 후 재개가 가능해야 합니다.
 
 ### 3.5 Report: 시각화/근거/훈련 (/report)
 
 - Overview: 전체 위험도(riskScore)와 상위 위험 게시물(Top 위험 게시물)을 보여야 합니다.
 - Graph: `단서 -> 위험 -> 시나리오`를 React Flow로 시각화해야 합니다.
-  - LLM edge가 있으면 사용하고, 없으면 **휴리스틱 그래프**로라도 연결을 보여야 합니다.
+  - LLM edge가 있으면 사용하고, 없으면 휴리스틱 그래프로라도 연결을 보여야 합니다.
   - Edge 클릭 시 연결 “근거(reason)”를 확인할 수 있어야 합니다.
 - Evidence: 텍스트 단서/이미지 단서/포스트별 통합 분석(Post Insights)을 필터링/검색하며 탐색할 수 있어야 합니다.
 - Training: 훈련용 피싱(SMS + 대본)을 제공하되, 안전 규칙(링크/기관사칭/송금유도 금지)을 지켜야 합니다.
@@ -216,7 +220,12 @@ type BlindReport = {
   scenarios: Scenario[];
 
   attackGraph?: AttackGraph; // LLM edge(선택) + reason
-  phishingSimulation?: { sms: string; voiceScript: string; model?: string; generatedAt?: string };
+  phishingSimulation?: {
+    sms: string;
+    voiceScript: string;
+    model?: string;
+    generatedAt?: string;
+  };
   postInsights?: PostInsights; // 포스트별 통합 분석
 
   scoring?: ReportScoring; // 서버/클라에서 갱신되는 점수
@@ -273,16 +282,25 @@ type BlindReport = {
 ### `POST /api/naver/categories`
 
 요청:
+
 ```json
 { "blogId": "someid" }
 ```
 
 응답(200):
+
 ```json
 {
   "blogId": "someid",
   "categoryCount": 12,
-  "candidates": [{ "categoryNo": 1, "categoryName": "[블챌] ...", "postCnt": 3, "openYN": true }],
+  "candidates": [
+    {
+      "categoryNo": 1,
+      "categoryName": "[블챌] ...",
+      "postCnt": 3,
+      "openYN": true
+    }
+  ],
   "recommendedCategoryNo": 1
 }
 ```
@@ -290,11 +308,13 @@ type BlindReport = {
 ### `POST /api/naver/recon`
 
 요청:
+
 ```json
 { "blogId": "someid" }
 ```
 
 응답(200):
+
 ```json
 {
   "blogId": "someid",
@@ -321,6 +341,7 @@ type BlindReport = {
 ### `POST /api/analyze`
 
 요청:
+
 ```json
 {
   "blogId": "someid",
@@ -332,31 +353,52 @@ type BlindReport = {
 ```
 
 노트:
+
 - `mode: "mock"`이면 네이버/오픈AI를 호출하지 않고 mock 리포트를 반환합니다.
 - `categoryNos`(다중)가 있으면 카테고리별 cap을 두고 전체 `maxPosts`(기본 10, 최대 20) 안에서 수집합니다.
 
 응답(200): `BlindReport`
 
 오류:
+
 - `400`: `blogId` 누락
 - `500`: 내부 오류(그 외 실패는 대부분 warnings 포함 mock으로 폴백)
 
 ### `POST /api/vision`
 
 요청:
+
 ```json
 {
   "blogId": "someid",
-  "posts": [{ "logNo": "123", "url": "...", "title": "...", "publishedAt": "2026-02-01", "images": ["https://..."] }],
+  "posts": [
+    {
+      "logNo": "123",
+      "url": "...",
+      "title": "...",
+      "publishedAt": "2026-02-01",
+      "images": ["https://..."]
+    }
+  ],
   "cursor": { "postIndex": 0, "imageIndex": 0 },
   "maxImages": 12
 }
 ```
 
 응답(200):
+
 ```json
 {
-  "findings": [{ "postLogNo": "123", "imageIndex": 0, "severity": "high", "label": "...", "excerpt": "...", "rationale": "..." }],
+  "findings": [
+    {
+      "postLogNo": "123",
+      "imageIndex": 0,
+      "severity": "high",
+      "label": "...",
+      "excerpt": "...",
+      "rationale": "..."
+    }
+  ],
   "cursorNext": { "postIndex": 0, "imageIndex": 12 },
   "done": false,
   "processedImages": 12,
@@ -365,25 +407,36 @@ type BlindReport = {
 ```
 
 오류:
+
 - `429`: `{ "error": "openai_vision_429", "retryAfterMs": 8000, "cursor": {..} }`
 - `502`: OpenAI 실패/파싱 실패 등
 
 ### `POST /api/graph`
 
 요청(요약 입력 + index mapping):
+
 ```json
 {
   "blogId": "someid",
-  "extractedPieces": [/* subset */],
+  "extractedPieces": [
+    /* subset */
+  ],
   "extractedPieceIndexes": [0, 3, 9],
-  "imageFindings": [/* subset */],
+  "imageFindings": [
+    /* subset */
+  ],
   "imageFindingIndexes": [1, 7],
-  "riskNodes": [/* ... */],
-  "scenarios": [/* ... */]
+  "riskNodes": [
+    /* ... */
+  ],
+  "scenarios": [
+    /* ... */
+  ]
 }
 ```
 
 응답(200):
+
 ```json
 {
   "generatedAt": "YYYY-MM-DDTHH:mm:ss.sssZ",
@@ -402,12 +455,14 @@ type BlindReport = {
 ```
 
 오류:
+
 - `429`: `{ "error": "openai_graph_429", "retryAfterMs": 8000 }`
 - `502`: OpenAI 실패/파싱 실패 등
 
 ### `POST /api/phishing`
 
 요청:
+
 ```json
 {
   "blogId": "someid",
@@ -419,21 +474,32 @@ type BlindReport = {
 ```
 
 응답(200):
+
 ```json
 { "sms": "...", "voiceScript": "...", "model": "gpt-4o", "generatedAt": "..." }
 ```
 
 오류:
+
 - `429`: `{ "error": "openai_phishing_429", "retryAfterMs": 8000 }`
 - `502`: OpenAI 실패/파싱 실패 등
 
 ### `POST /api/post-insights`
 
 요청:
+
 ```json
 {
   "blogId": "someid",
-  "contents": [{ "logNo": "123", "url": "...", "title": "...", "publishedAt": "2026-02-01", "categoryName": "..." }],
+  "contents": [
+    {
+      "logNo": "123",
+      "url": "...",
+      "title": "...",
+      "publishedAt": "2026-02-01",
+      "categoryName": "..."
+    }
+  ],
   "extractedPieces": [],
   "imageFindings": []
 }
@@ -442,6 +508,7 @@ type BlindReport = {
 응답(200): `PostInsights`
 
 오류:
+
 - `429`: `{ "error": "openai_post_insights_429", "retryAfterMs": 8000 }`
 - `502`: OpenAI 실패/파싱 실패 등(가능하면 부분 결과로 계속 진행)
 

@@ -272,6 +272,7 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-6 py-10 sm:px-10">
+      <h1 className="sr-only">블로그 게시글 OSINT 분석 워크벤치</h1>
       <header className="flex items-center justify-between">
         <div className="space-y-2">
           <div className="text-xs text-zinc-400">대상</div>

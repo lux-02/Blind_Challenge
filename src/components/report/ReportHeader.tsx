@@ -58,6 +58,7 @@ export default function ReportHeader(props: {
   return (
     <div className="sticky top-0 z-40 -mx-6 border-b border-[var(--bc-border)] bg-[rgba(4,7,13,0.78)] px-6 py-4 backdrop-blur-md sm:-mx-10 sm:px-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="sr-only">네이버 블로그 OSINT 위험 리포트</h1>
         <div className="min-w-0 flex-1">
           <div className="rounded-2xl border border-[var(--bc-border)] bg-black/20 px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
