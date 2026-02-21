@@ -14,6 +14,7 @@ Blind Challenge (블라인드 챌린지) MVP
 - 목표: 공개된 네이버 블로그 글(텍스트/이미지)에서 개인정보·생활패턴 노출 “단서”를 찾아내고, 이를 바탕으로 위험 요소(Risk)와 공격 시나리오(Scenario)를 *방어 목적*으로 설명합니다.
 - 핵심 출력물: `Clue(단서) -> Risk(위험) -> Scenario(시나리오)` 그래프 + Evidence(근거) 탐색기 + 훈련용 피싱 시뮬레이션(SMS/대본).
 - 저장 정책: 서버 DB 저장 없음. 분석 결과는 브라우저 `sessionStorage`의 `blindchallenge:latestReport`에만 저장됩니다.
+- 소유권 검증: URL만으로 타인 블로그를 분석할 수 없도록, 소개글 난수 인증(3분 TTL) + 소유권 세션 쿠키(1시간 TTL)를 사용합니다.
 - 안전/윤리: 범죄 실행을 돕지 않습니다. 출력은 PII를 그대로 노출하지 않도록 마스킹/축약을 적용하고, 피싱 시뮬레이터는 링크/계좌/전화번호/기관사칭 디테일을 금지합니다.
 
 ## Getting Started
@@ -30,6 +31,7 @@ npm i
 
 ```bash
 OPENAI_API_KEY=...
+BLINDCHAL_OWNERSHIP_SECRET=... # 권장 (미설정 시 NEXTAUTH_SECRET/OPENAI_API_KEY 순으로 fallback)
 ```
 
 선택(모델/튜닝):
@@ -75,6 +77,7 @@ npm run dev
 - Scraping/Parsing: `m.blog.naver.com` API + HTML parsing(cheerio)
 - LLM: OpenAI Chat Completions(텍스트/그래프/피싱) + Vision(이미지 단서)
 - State: 서버 DB 없음, 클라이언트 `sessionStorage` 중심
+- Ownership Auth: 소개글 난수 인증 + `HttpOnly` 세션 쿠키 기반 분석 권한 부여
 
 ### Key Design Points
 
@@ -94,6 +97,11 @@ sequenceDiagram
   participant O as OpenAI
 
   U->>B: 블로그 ID/URL 입력 (/)
+  B->>A: POST /api/naver/ownership/nonce { blogId }
+  A-->>B: nonce + challengeToken(3분 TTL)
+  U->>B: 소개글에 nonce 입력 후 인증 요청
+  B->>A: POST /api/naver/ownership/verify { blogId, challengeToken }
+  A-->>B: 소유권 세션 쿠키(HttpOnly, 1시간 TTL)
   B->>A: POST /api/naver/recon { blogId }
   A->>N: category-list + (최근 1년 활동 여부 probe)
   A->>O: (옵션) 카테고리 위험 분류(OPENAI_RECON_MODEL)
@@ -137,8 +145,9 @@ flowchart LR
   APIRoutes -->|Chat/Vision| OA["OpenAI API"]
 
   subgraph APISurface["Backend (Next.js API Routes)"]
-    R1["/api/naver/recon<br/>카테고리 정찰 + 위험 분류"]
-    R2["/api/analyze<br/>스크래핑 + 텍스트 분석 + 초기 리포트"]
+    R0["/api/naver/ownership/*<br/>소개글 난수 인증 + 세션 발급"]
+    R1["/api/naver/recon<br/>카테고리 정찰 + 위험 분류 (소유권 검증 필요)"]
+    R2["/api/analyze<br/>스크래핑 + 텍스트 분석 + 초기 리포트 (소유권 검증 필요)"]
     R3["/api/vision<br/>이미지 단서 점진 처리"]
     R4["/api/graph<br/>Clue->Risk->Scenario edge 생성"]
     R5["/api/phishing<br/>훈련용 피싱 시뮬레이터"]
@@ -165,7 +174,12 @@ flowchart LR
 ### 3.1 Target 입력 (/)
 
 - 사용자는 네이버 blogId(예: `someid`) 또는 블로그 URL을 입력할 수 있어야 합니다.
-- 입력값은 내부적으로 `blogId`로 정규화되어 `/analysis?blogId=...`로 이동해야 합니다.
+- 입력값은 내부적으로 `blogId`로 정규화되어야 합니다.
+- 분석 진입 전, 소유권 검증 단계가 필요합니다.
+  - `/api/naver/ownership/nonce`로 3분 TTL 난수 발급
+  - 사용자가 블로그 소개글에 난수를 입력/저장
+  - `/api/naver/ownership/verify`로 난수 존재 여부 확인 후 세션 쿠키 발급
+- 소유권 세션이 유효한 경우에만 `/analysis?blogId=...`에서 분석이 진행되어야 합니다.
 
 ### 3.2 Recon: 카테고리 정찰 (/analysis, `/api/naver/recon`)
 

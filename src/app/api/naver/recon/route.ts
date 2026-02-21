@@ -5,6 +5,7 @@ import {
   pickChallengeCategoryCandidates,
   type BlogCategory,
 } from "@/lib/naver/mblogScraper";
+import { requireOwnershipOrThrow } from "@/lib/ownership/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -285,6 +286,9 @@ export async function POST(req: Request) {
     const blogId = typeof blogIdRaw === "string" ? blogIdRaw.trim() : "";
     if (!blogId) return NextResponse.json({ error: "blogId is required" }, { status: 400 });
 
+    const denied = requireOwnershipOrThrow(req, blogId);
+    if (denied) return denied;
+
     const warnings: string[] = [];
     const cutoffAddDateMs = cutoffMs(365);
     const cutoffDate = new Date(cutoffAddDateMs).toISOString().slice(0, 10);
@@ -413,4 +417,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

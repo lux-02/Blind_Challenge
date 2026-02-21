@@ -22,6 +22,17 @@ type ReconCategory = {
   isChallenge: boolean;
 };
 
+async function readApiErrorMessage(res: Response): Promise<string | null> {
+  try {
+    const json = (await res.json()) as { message?: unknown; error?: unknown } | null;
+    if (typeof json?.message === "string" && json.message.trim()) return json.message.trim();
+    if (typeof json?.error === "string" && json.error.trim()) return json.error.trim();
+  } catch {
+    // ignore parse errors
+  }
+  return null;
+}
+
 function AnalysisStepper(props: { phase: string }) {
   const { phase } = props;
   const step =
@@ -132,7 +143,10 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
       }),
     });
 
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    if (!res.ok) {
+      const msg = await readApiErrorMessage(res);
+      throw new Error(msg ?? `API error: ${res.status}`);
+    }
     const report = (await res.json()) as BlindReport;
     setPhase("storing");
     try {
@@ -225,7 +239,13 @@ export default function AnalysisClient({ blogId }: { blogId: string }) {
           return;
         }
 
-        // If category probing fails, still attempt analysis (API will auto-pick / fallback).
+        // Ownership/session errors should stop immediately and guide user back to home.
+        if (res.status === 403 || res.status === 401 || res.status === 500) {
+          const msg = await readApiErrorMessage(res);
+          throw new Error(msg ?? `API error: ${res.status}`);
+        }
+
+        // Otherwise, attempt analysis (API will auto-pick / fallback).
         await runAnalyze(null);
       } catch (e) {
         if (cancelled) return;

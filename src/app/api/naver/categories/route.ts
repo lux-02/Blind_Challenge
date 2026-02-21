@@ -4,6 +4,7 @@ import {
   pickChallengeCategoryCandidates,
   type BlogCategory,
 } from "@/lib/naver/mblogScraper";
+import { requireOwnershipOrThrow } from "@/lib/ownership/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,9 @@ export async function POST(req: Request) {
     if (!blogId) {
       return NextResponse.json({ error: "blogId is required" }, { status: 400 });
     }
+
+    const denied = requireOwnershipOrThrow(req, blogId);
+    if (denied) return denied;
 
     const categories = await fetchBlogCategories(blogId);
     const picked = pickChallengeCategoryCandidates(categories);

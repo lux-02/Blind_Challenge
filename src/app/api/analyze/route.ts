@@ -15,6 +15,7 @@ import {
 } from "@/lib/naver/mblogScraper";
 import type { ImageFinding } from "@/lib/types";
 import { scoreReport } from "@/lib/scoring";
+import { requireOwnershipOrThrow } from "@/lib/ownership/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -264,6 +265,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    const denied = requireOwnershipOrThrow(req, blogId);
+    if (denied) return denied;
 
     const mode = typeof body?.mode === "string" ? body.mode : "live";
     const maxPosts =
