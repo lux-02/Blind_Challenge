@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRetryAfterMs } from "@/lib/rateLimit";
 import type { ExtractedPiece, ImageFinding, PostInsight, PostInsights } from "@/lib/types";
+import { requireOwnershipOrThrow } from "@/lib/ownership/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -329,6 +330,9 @@ export async function POST(req: Request) {
 
   const blogId = typeof body?.blogId === "string" ? body.blogId.trim() : "";
   if (!blogId) return NextResponse.json({ error: "blogId is required" }, { status: 400 });
+
+  const denied = requireOwnershipOrThrow(req, blogId);
+  if (denied) return denied;
 
   const contentsRaw = Array.isArray(body?.contents) ? body!.contents : [];
   const contents = contentsRaw

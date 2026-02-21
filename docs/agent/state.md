@@ -15,6 +15,7 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 
 - UX/UI 리디자인(시니어 톤) + IA 재구성(Report 탭 워크벤치) + 성능(ReactFlow 지연 로딩) + a11y(포커스/스킵 링크) 적용.
 - 분석 플로우 고도화: Recon(카테고리 정찰) -> Analyze(사용자 선택 기반 다중 카테고리 통합 분석) + Report OSINT 품질 개선.
+- 보안 보완: 소유권 검증(소개글 난수 인증) 도입으로 타인 블로그 무단 분석 경로 차단.
 
 ## Constraints
 
@@ -42,12 +43,16 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 - README 상단에 `top_logo.svg` 로고 적용.
 - SEO: App Router `metadata` 보강(페이지별 title/description/canonical/OG/Twitter), `viewport` 추가, `robots.txt`/`sitemap.xml` 생성, 홈에 Organization/WebSite JSON-LD 추가, OG/Twitter 이미지 추가.
 - Report mobile: Evidence(단서) 섹션에서 base grid columns 누락으로 implicit column이 max-content 폭을 가져 horizontal overflow 발생 -> `grid-cols-1` 추가 + 긴 문자열 `overflow-wrap:anywhere` 적용.
+- 소유권 인증 로직 추가: `/api/naver/ownership/nonce`, `/api/naver/ownership/verify`, `HttpOnly` 세션 쿠키(`bc_own_v1`) 발급.
+- API 보호 게이트 적용: `/api/naver/recon`, `/api/analyze`, `/api/vision`, `/api/graph`, `/api/phishing`, `/api/post-insights`, `/api/naver/categories`에서 소유권 검증 필수화(샘플 `blogId=sample` 예외).
+- Home 입력 플로우 개편: ID/URL 입력 -> 난수 발급 -> 소개글 반영 -> 인증 후 분석 시작.
+- 보안/운영 문서 업데이트: README에 ownership secret/env/flow 반영.
 
 ## Next Actions
 
-- 수동 QA: 375/768/1024/1440 반응형, 키보드 탭 이동/포커스 링, 모달 ESC/닫기 동작 점검.
-- 실제 분석 플로우: recon -> 카테고리 선택 -> 다중 카테고리 수집 -> 리포트 반영(`report.categories`, `contents[].categoryName`) 확인.
-- Vision 완료 후 Post Insights 자동 생성(429 재시도 포함) 확인.
+- 소유권 인증 수동 QA: 난수 만료(3분), 오입력/미반영, 세션 만료(1시간), 재인증 UX 확인.
+- 운영 환경 점검: Vercel 환경변수 `BLINDCHAL_OWNERSHIP_SECRET` 설정 및 쿠키 동작 확인.
+- 발표용 캡처 생성: 인증 발급/검증 성공/분석 진입/403 차단 화면.
 
 ## Open Questions / Risks
 
@@ -63,3 +68,5 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok (SEO 메타/robots/sitemap)
 - `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok (SEO title 조정)
 - `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok (Report mobile overflow fix)
+- `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok (ownership auth 추가)
+- `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok (ownership auth + API guard)
