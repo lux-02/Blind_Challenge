@@ -55,3 +55,68 @@ export function getRetryAfterMs(headers: Headers, fallbackMs = 5000): number {
   return fallbackMs;
 }
 
+type RateBucket = {
+  count: number;
+  resetAt: number;
+};
+
+const RATE_BUCKETS = new Map<string, RateBucket>();
+const MAX_BUCKETS = 8000;
+
+function pruneBuckets(nowMs: number) {
+  if (RATE_BUCKETS.size <= MAX_BUCKETS) return;
+  for (const [k, v] of RATE_BUCKETS) {
+    if (v.resetAt <= nowMs) RATE_BUCKETS.delete(k);
+    if (RATE_BUCKETS.size <= MAX_BUCKETS) break;
+  }
+}
+
+export function checkInMemoryRateLimit(opts: {
+  namespace: string;
+  key: string;
+  windowMs: number;
+  limit: number;
+  nowMs?: number;
+}): {
+  allowed: boolean;
+  remaining: number;
+  retryAfterMs: number;
+  resetAt: number;
+} {
+  const nowMs = opts.nowMs ?? Date.now();
+  const windowMs = Math.max(1_000, Math.floor(opts.windowMs));
+  const limit = Math.max(1, Math.floor(opts.limit));
+  const bucketKey = `${opts.namespace}:${opts.key}`;
+
+  pruneBuckets(nowMs);
+
+  const existing = RATE_BUCKETS.get(bucketKey);
+  if (!existing || existing.resetAt <= nowMs) {
+    const resetAt = nowMs + windowMs;
+    RATE_BUCKETS.set(bucketKey, { count: 1, resetAt });
+    return {
+      allowed: true,
+      remaining: Math.max(0, limit - 1),
+      retryAfterMs: 0,
+      resetAt,
+    };
+  }
+
+  if (existing.count >= limit) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: Math.max(0, existing.resetAt - nowMs),
+      resetAt: existing.resetAt,
+    };
+  }
+
+  existing.count += 1;
+  RATE_BUCKETS.set(bucketKey, existing);
+  return {
+    allowed: true,
+    remaining: Math.max(0, limit - existing.count),
+    retryAfterMs: 0,
+    resetAt: existing.resetAt,
+  };
+}

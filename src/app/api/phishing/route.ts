@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRetryAfterMs } from "@/lib/rateLimit";
 import type { BlindReport, ImageFinding, RiskNode, Scenario } from "@/lib/types";
+import { requireOwnershipOrThrow } from "@/lib/ownership/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -156,6 +157,9 @@ export async function POST(req: Request) {
   const blogId = typeof body?.blogId === "string" ? body.blogId.trim() : "";
   if (!blogId) return NextResponse.json({ error: "blogId is required" }, { status: 400 });
 
+  const denied = requireOwnershipOrThrow(req, blogId);
+  if (denied) return denied;
+
   const extractedPieces = Array.isArray(body?.extractedPieces)
     ? ((body!.extractedPieces as BlindReport["extractedPieces"]).slice(0, 60) as BlindReport["extractedPieces"])
     : [];
@@ -216,4 +220,3 @@ export async function POST(req: Request) {
     { status: 200 },
   );
 }
-

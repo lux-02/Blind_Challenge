@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSession } from "@/lib/naver/mblogScraper";
 import type { ImageFinding, VisionCursor } from "@/lib/types";
 import { getRetryAfterMs } from "@/lib/rateLimit";
+import { requireOwnershipOrThrow } from "@/lib/ownership/guard";
 import {
   callOpenAIVisionForPost,
   extractJsonObjectFromChatCompletions,
@@ -85,6 +86,9 @@ export async function POST(req: Request) {
 
   const blogId = typeof body?.blogId === "string" ? body.blogId.trim() : "";
   if (!blogId) return NextResponse.json({ error: "blogId is required" }, { status: 400 });
+
+  const denied = requireOwnershipOrThrow(req, blogId);
+  if (denied) return denied;
 
   const postsRaw = Array.isArray(body?.posts) ? body!.posts : [];
   const posts = postsRaw
