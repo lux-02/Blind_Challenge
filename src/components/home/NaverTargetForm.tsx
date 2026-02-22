@@ -213,6 +213,7 @@ export default function NaverTargetForm({ variant = "default" }: Props) {
   function clearChallenge() {
     setChallenge(null);
     setCopied(false);
+    setError(null);
   }
 
   async function copyNonce() {
@@ -337,7 +338,7 @@ export default function NaverTargetForm({ variant = "default" }: Props) {
               </details>
             </div>
 
-            {error ? (
+            {error && !challenge ? (
               <div className="mt-3 rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white/90">
                 {error}
               </div>
@@ -438,6 +439,12 @@ export default function NaverTargetForm({ variant = "default" }: Props) {
                 코드 재발급
               </Button>
             </div>
+
+            {error ? (
+              <div className="rounded-xl border border-red-300/30 bg-red-500/10 px-3 py-3 text-xs leading-5 text-red-100">
+                {error}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Modal>
