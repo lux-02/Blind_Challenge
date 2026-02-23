@@ -23,6 +23,9 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 
 ## Current Status
 
+- Training 탭 피싱 시뮬레이터 톤 교정: 경고문 중심 문구 대신 `공격자 화법 기반 안전 시뮬레이션`이 나오도록 `/api/phishing` 프롬프트를 강화(개인화 단서 2개 이상, 대화형 스크립트, 마지막 `[훈련 안내]` 1줄).
+- 초기 Analyze 결과의 `phishingSimulation`도 동일 톤을 따르도록 `/api/analyze` 프롬프트 규칙을 동기화.
+- Mock 리포트의 SMS/보이스 대본 샘플도 같은 기준으로 교체해 폴백 UX 일관성 확보.
 - 글로벌 토큰 확장 + 공통 포커스 스타일 + reduced-motion 훅/클래스 + content-visibility 유틸 추가.
 - 레퍼런스 기반 HUD/CRT 무드로 테마 전환: 완전 흑백(화이트 단색) + 그리드/스캔라인/노이즈 + 패널 프레임/코너 틱 적용(컬러 포인트 제거).
 - CRT 질감 강화: `--bc-border/--bc-hud-line/--bc-hud-glow` 강화, scanlines/noise 거칠기 증가(overlay + grain).
@@ -55,6 +58,7 @@ Keep it compact: no large logs, no pasted code blocks, no long terminal output.
 
 ## Recent Commands
 
+- `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok (training phishing prompt/mocks 변경 검증)
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok
 - `./scripts/agent/quickcheck.sh --skip-build` -> lint/tsc ok
 - `./scripts/agent/quickcheck.sh` -> lint/tsc/build ok
