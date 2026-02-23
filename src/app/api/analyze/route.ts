@@ -177,6 +177,7 @@ async function callOpenAI(opts: {
     "중요 안전 규칙:",
     "- 실제 범죄를 돕는 구체적 실행 지침(침입 방법, 회피 방법, 표적화 절차, 불법 행위 단계)은 절대 제공하지 마라.",
     "- 보이스피싱/스미싱은 '훈련용 예시'로만 제공하고, 링크/전화번호/계좌/기관 사칭 디테일을 넣지 마라.",
+    "- phishingSimulation은 단순 경고문이 아니라 공격자 화법을 재현한 '안전한 시뮬레이션'이어야 한다.",
     "- 출력은 반드시 JSON만(설명 텍스트 금지).",
     "",
     "출력 JSON 스키마(필드명 고정):",
@@ -197,6 +198,9 @@ async function callOpenAI(opts: {
     "evidence.rationale는 왜 이 조각이 개인정보/생활패턴/관계 단서인지 1~2문장으로 설명해라(방어 목적).",
     "evidence.confidence는 0~1 범위로 추정치.",
     "evidencePostDate는 posts[].publishedAt에서 가능한 한 YYYY-MM-DD로 채워라. 없으면 빈 문자열로 두지 말고 추정하지 마라(해당 piece를 제외).",
+    "phishingSimulation.sms는 220자 이내로 작성하고, 최소 2개 단서 맥락(장소/일정/관계/소속)을 반영한 유인 메시지여야 한다.",
+    "phishingSimulation.voiceScript는 12~18줄 대화형으로 작성하고 각 줄은 '공격자:' 또는 '사용자:'로 시작해라.",
+    "phishingSimulation 마지막 줄은 '[훈련 안내]'로 시작하는 방어 팁 1줄만 포함해라.",
   ].join("\n");
 
   const baseBody: Record<string, unknown> = {
