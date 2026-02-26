@@ -411,7 +411,7 @@ export async function POST(req: Request) {
     findingsByLogNo.set(f.postLogNo, list);
   }
 
-  const model = process.env.OPENAI_POST_INSIGHTS_MODEL || "gpt-4o-mini";
+  const model = process.env.OPENAI_POST_INSIGHTS_MODEL || "gpt-5";
   const prepared = contents.map((c) => {
     const textEvidence = (piecesByLogNo.get(c.logNo) ?? [])
       .slice(0, 10)

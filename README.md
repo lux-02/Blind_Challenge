@@ -37,20 +37,23 @@ BLINDCHAL_OWNERSHIP_SECRET=... # 권장 (미설정 시 NEXTAUTH_SECRET/OPENAI_AP
 선택(모델/튜닝):
 
 ```bash
-# Text analysis model (default: gpt-4o-mini)
-OPENAI_MODEL=gpt-4o-mini
+# Text analysis model (default: gpt-5)
+OPENAI_MODEL=gpt-5
 
-# Category recon classifier model (default: gpt-4o-mini)
-OPENAI_RECON_MODEL=gpt-4o-mini
+# Category recon classifier model (default: gpt-5)
+OPENAI_RECON_MODEL=gpt-5
 
-# LLM graph model (default: gpt-4o-mini)
-OPENAI_GRAPH_MODEL=gpt-4o-mini
+# LLM graph model (default: gpt-5)
+OPENAI_GRAPH_MODEL=gpt-5
 
-# Phishing simulator model (default: gpt-4o)
-OPENAI_PHISHING_MODEL=gpt-4o
+# Phishing simulator model (default: gpt-5)
+OPENAI_PHISHING_MODEL=gpt-5
 
-# Per-post "insights" model (default: gpt-4o-mini)
-OPENAI_POST_INSIGHTS_MODEL=gpt-4o-mini
+# Per-post "insights" model (default: gpt-5)
+OPENAI_POST_INSIGHTS_MODEL=gpt-5
+
+# Vision model (default: gpt-5)
+OPENAI_VISION_MODEL=gpt-5
 
 # Progressive Vision batching (default: 12)
 BLINDCHAL_VISION_MAX_IMAGES_PER_CALL=12
@@ -84,6 +87,7 @@ npm run dev
 - API Route는 App Router의 Route Handler(`src/app/api/**/route.ts`)로 구현되어 있고,`runtime = "nodejs"`, `dynamic = "force-dynamic"`로 런타임/캐시를 고정합니다.
 - 이미지 다운로드는 SSRF 완화를 위해 `*.pstatic.net` allowlist만 허용합니다(그 외 URL은 무시).
 - Vision은 429(TPM) 리스크를 줄이기 위해 점진 처리(Progressive batching)로 동작합니다.
+- 텍스트 분석 전 1차 Rule-based PII 필터(전화번호/이메일/주민번호/계좌번호 패턴)를 적용해 마스킹하고, 해당 룰 신호(`ruleSignals`)를 LLM 문맥과 교차 검증합니다.
 
 ### 📊 System Flow (Sequence Diagram)
 
@@ -454,7 +458,7 @@ type BlindReport = {
 ```json
 {
   "generatedAt": "YYYY-MM-DDTHH:mm:ss.sssZ",
-  "model": "gpt-4o-mini",
+  "model": "gpt-5",
   "edges": [
     {
       "id": "e-1",
@@ -490,7 +494,7 @@ type BlindReport = {
 응답(200):
 
 ```json
-{ "sms": "...", "voiceScript": "...", "model": "gpt-4o", "generatedAt": "..." }
+{ "sms": "...", "voiceScript": "...", "model": "gpt-5", "generatedAt": "..." }
 ```
 
 오류:

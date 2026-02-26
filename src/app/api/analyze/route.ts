@@ -16,6 +16,7 @@ import {
 import type { ImageFinding } from "@/lib/types";
 import { scoreReport } from "@/lib/scoring";
 import { requireOwnershipOrThrow } from "@/lib/ownership/guard";
+import { applyRuleBasedPrefilter } from "@/lib/piiRuleFilter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -151,9 +152,16 @@ async function callOpenAI(opts: {
     text: string;
     images: string[];
     categoryName?: string;
+    ruleSignals: Array<{
+      kind: "phone" | "email" | "resident_id" | "account";
+      label: string;
+      count: number;
+      samples: string[];
+    }>;
+    ruleHitCount: number;
   }>;
 }) {
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const model = process.env.OPENAI_MODEL || "gpt-5";
 
   const payload = {
     blogId: opts.blogId,
@@ -164,6 +172,8 @@ async function callOpenAI(opts: {
       publishedAt: p.publishedAt ?? "",
       url: p.url,
       categoryName: p.categoryName ?? "",
+      ruleHitCount: p.ruleHitCount,
+      ruleSignals: p.ruleSignals.slice(0, 12),
       // Hard cap per post to keep request bounded.
       text: p.text.slice(0, 6000),
       images: p.images.slice(0, 12),
@@ -173,11 +183,14 @@ async function callOpenAI(opts: {
   const system = [
     "너는 OSINT 기반 개인정보 노출을 진단하는 보안 분석가다.",
     "목표: 아래 블로그 게시물 텍스트/이미지 URL로부터 (1) 개인정보/민감정보 단서, (2) 생활 패턴, (3) 이를 악용할 수 있는 '가능한 공격 시나리오'를 '방어/경각심' 목적의 시뮬레이션으로 정리한다.",
+    "입력 posts[].text는 1차 룰 기반 패턴 필터를 거친 마스킹 텍스트이며, posts[].ruleSignals는 정형 데이터 탐지 결과다.",
     "",
     "중요 안전 규칙:",
     "- 실제 범죄를 돕는 구체적 실행 지침(침입 방법, 회피 방법, 표적화 절차, 불법 행위 단계)은 절대 제공하지 마라.",
     "- 보이스피싱/스미싱은 '훈련용 예시'로만 제공하고, 링크/전화번호/계좌/기관 사칭 디테일을 넣지 마라.",
     "- phishingSimulation은 단순 경고문이 아니라 공격자 화법을 재현한 '안전한 시뮬레이션'이어야 한다.",
+    "- ruleSignals(룰 탐지 결과)와 문맥을 교차 검증해 confidence를 조정해라. 둘 다 지지하면 confidence를 높이고, 충돌하면 낮춰라.",
+    "- 마스킹된 텍스트에서 원문 개인정보를 복원/추정하려고 시도하지 마라.",
     "- 출력은 반드시 JSON만(설명 텍스트 금지).",
     "",
     "출력 JSON 스키마(필드명 고정):",
@@ -194,7 +207,7 @@ async function callOpenAI(opts: {
     '  "phishingSimulation": { "sms": string, "voiceScript": string }',
     "}",
     "",
-    "evidence.excerpt는 posts[].text에서 직접 발췌한 40~160자 이내의 짧은 문장/구절로 작성해라.",
+    "evidence.excerpt는 posts[].text(마스킹된 입력)에서 직접 발췌한 40~160자 이내의 짧은 문장/구절로 작성해라.",
     "evidence.rationale는 왜 이 조각이 개인정보/생활패턴/관계 단서인지 1~2문장으로 설명해라(방어 목적).",
     "evidence.confidence는 0~1 범위로 추정치.",
     "evidencePostDate는 posts[].publishedAt에서 가능한 한 YYYY-MM-DD로 채워라. 없으면 빈 문자열로 두지 말고 추정하지 마라(해당 piece를 제외).",
@@ -461,15 +474,25 @@ export async function POST(req: Request) {
     let ai: Record<string, unknown>;
     try {
       const postsForAI: Parameters<typeof callOpenAI>[0]["posts"] = posts.map((p) => {
+        const pre = applyRuleBasedPrefilter(p.text);
         return {
           title: p.title,
           publishedAt: p.publishedAt,
           url: p.url,
-          text: p.text,
+          text: pre.maskedText,
           images: p.images,
           categoryName: hasCategoryMeta(p) ? p.categoryName : undefined,
+          ruleSignals: pre.signals,
+          ruleHitCount: pre.totalHits,
         };
       });
+
+      const totalRuleHits = postsForAI.reduce((acc, p) => acc + p.ruleHitCount, 0);
+      if (totalRuleHits > 0) {
+        warnings.push(
+          `룰 기반 1차 필터에서 정형 민감정보 패턴 ${totalRuleHits}건을 마스킹 후 LLM 분석에 반영했습니다.`,
+        );
+      }
 
       ai = await callOpenAI({
         apiKey,
