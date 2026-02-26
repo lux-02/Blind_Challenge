@@ -144,7 +144,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "OPENAI_API_KEY is not set" }, { status: 400 });
   }
 
-  const model = process.env.OPENAI_PHISHING_MODEL || "gpt-4o";
+  const model = process.env.OPENAI_PHISHING_MODEL || "gpt-5";
 
   const body = (await req.json().catch(() => null)) as
     | {

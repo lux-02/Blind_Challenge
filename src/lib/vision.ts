@@ -276,7 +276,7 @@ export async function callOpenAIVisionForPost(opts: {
   imageDataUrls: Array<{ imageIndex: number; dataUrl: string }>;
   imageUrls: string[];
 }) {
-  const model = "gpt-4o-mini";
+  const model = process.env.OPENAI_VISION_MODEL || "gpt-5";
 
   const system = [
     "너는 OSINT/개인정보 노출을 진단하는 보안 분석가다.",

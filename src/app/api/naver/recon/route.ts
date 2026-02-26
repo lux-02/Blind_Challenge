@@ -341,7 +341,7 @@ export async function POST(req: Request) {
     let aiMap: Map<number, { risk: "high" | "normal"; reason: string }> | null = null;
     if (apiKey) {
       try {
-        const model = process.env.OPENAI_RECON_MODEL || "gpt-4o-mini";
+        const model = process.env.OPENAI_RECON_MODEL || "gpt-5";
         aiMap = await classifyCategoriesWithOpenAI({
           apiKey,
           model,
